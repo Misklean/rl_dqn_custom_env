@@ -27,36 +27,54 @@ class CustomEnv(gym.Env):
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         self.clock = pygame.time.Clock()
 
-        # Initial position of the agent
-        self.agent_pos = np.array([ENV_WIDTH // 2, ENV_HEIGHT // 2])  # Ensure this is a NumPy array
-
-        # Camera offset
-        self.camera_x = 0
-        self.camera_y = 0
-
         # Generate map using automaton
-        self.map = self.generate_map()
+        self.generate_map()
+
+        # Set the agent to a random walkable (white) cell
+        self.agent_pos = self.get_random_walkable_position()
+
+        # Update the camera's position based on the agent's position
+        self.update_camera()
+
+    def update_camera(self):
+        """Update the camera's position to follow the agent."""
+        self.camera_x = np.clip(self.agent_pos[0] - SCREEN_WIDTH // 2, 0, ENV_WIDTH - SCREEN_WIDTH)
+        self.camera_y = np.clip(self.agent_pos[1] - SCREEN_HEIGHT // 2, 0, ENV_HEIGHT - SCREEN_HEIGHT)
+
+    def get_random_walkable_position(self):
+        """Find a random walkable (white) cell for the agent to spawn."""
+        while True:
+            x = random.randint(0, MAP_WIDTH - 1)
+            y = random.randint(0, MAP_HEIGHT - 1)
+            if self.map[y, x] == 0:  # Check if it's a walkable cell (white)
+                return np.array([x * CELL_SIZE, y * CELL_SIZE])
+
 
     def generate_map(self):
-        """Generate a 2D map using cellular automaton."""
+        """Generate a 2D map using cellular automaton and create Rects for walls."""
         map_grid = np.random.choice([0, 1], size=(MAP_HEIGHT, MAP_WIDTH), p=[0.5, 0.5])  # 0 is walkable, 1 is a wall
 
         for _ in range(4):  # Apply automaton rules 4 times to smooth the map
             new_map = np.copy(map_grid)
             for y in range(1, MAP_HEIGHT - 1):
                 for x in range(1, MAP_WIDTH - 1):
-                    # Count the number of walls around the current cell
                     wall_count = np.sum(map_grid[y - 1:y + 2, x - 1:x + 2]) - map_grid[y, x]
-
-                    # Apply automaton rules to create a more structured map
                     if wall_count > 4:
                         new_map[y, x] = 1  # Become a wall
                     elif wall_count < 4:
                         new_map[y, x] = 0  # Become walkable
-
             map_grid = new_map
 
-        return map_grid
+        # Create Rects for walls
+        walls = []
+        for y in range(MAP_HEIGHT):
+            for x in range(MAP_WIDTH):
+                if map_grid[y, x] == 1:  # If it's a wall
+                    wall_rect = pygame.Rect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+                    walls.append(wall_rect)
+
+        self.walls = walls  # Store the walls for future use
+        self.map = map_grid
 
     def step(self, action):
         # Store the original position as a NumPy array
@@ -84,16 +102,8 @@ class CustomEnv(gym.Env):
         # Create a new Rect for the intended position of the agent
         intended_rect = pygame.Rect(intended_pos[0], intended_pos[1], CELL_SIZE, CELL_SIZE)
 
-        # Create Rects for walls based on the map
-        walls = []
-        for y in range(MAP_HEIGHT):
-            for x in range(MAP_WIDTH):
-                if self.map[y, x] == 1:  # If it's a wall
-                    wall_rect = pygame.Rect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE)
-                    walls.append(wall_rect)
-
         # Check for collisions with walls
-        for wall_rect in walls:
+        for wall_rect in self.walls:
             if intended_rect.colliderect(wall_rect):
                 # Snap to the edge of the wall based on the action
                 if action == 0:  # up
@@ -109,22 +119,20 @@ class CustomEnv(gym.Env):
         # Update the agent's position to the intended position
         self.agent_pos = np.array(intended_pos)  # Ensure this is a NumPy array
 
-        # Update the camera's position based on the agent's position
-        self.camera_x = np.clip(self.agent_pos[0] - SCREEN_WIDTH // 2, 0, ENV_WIDTH - SCREEN_WIDTH)
-        self.camera_y = np.clip(self.agent_pos[1] - SCREEN_HEIGHT // 2, 0, ENV_HEIGHT - SCREEN_HEIGHT)
+        # Update the camera's position based on the agent's new position
+        self.update_camera()
 
         return self.get_observation(), 0, False, {}
 
-
     def reset(self):
-        # Reset the agent position to the center of the environment
-        self.agent_pos = np.array([ENV_WIDTH // 2, ENV_HEIGHT // 2])
+        # Reset the agent position to a random walkable cell
+        self.agent_pos = self.get_random_walkable_position()
 
         # Reset the camera position
-        self.camera_x = 0
-        self.camera_y = 0
+        self.update_camera()
 
         return self.get_observation()
+
 
     def render(self, mode='human'):
         # Clear the screen
