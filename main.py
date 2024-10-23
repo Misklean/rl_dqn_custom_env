@@ -107,46 +107,60 @@ class CustomEnv(gym.Env):
 
     def flood_fill(self, map_grid, start_pos):
         """Perform flood fill to find all connected walkable cells (white cells)."""
+        room = []
         filled = np.zeros_like(map_grid, dtype=bool)
         to_fill = [start_pos]
+        
         while to_fill:
             x, y = to_fill.pop()
             if not filled[y, x] and map_grid[y, x] == 0:
                 filled[y, x] = True
+                room.append((x, y))  # Collect the walkable positions in the room
                 # Add adjacent walkable cells to be filled
                 if x > 0: to_fill.append((x - 1, y))
                 if x < MAP_WIDTH - 1: to_fill.append((x + 1, y))
                 if y > 0: to_fill.append((x, y - 1))
                 if y < MAP_HEIGHT - 1: to_fill.append((x, y + 1))
-        return filled
+        
+        return room
 
     def connect_rooms(self, map_grid):
-        """Connect all isolated white rooms using random tunneling."""
-        filled_rooms = []
+        """Connect all isolated rooms by creating tunnels between them."""
+        rooms = []
         visited = np.zeros_like(map_grid, dtype=bool)
 
-        # Identify all isolated white rooms
+        # Identify all isolated rooms
         for y in range(1, MAP_HEIGHT - 1):
             for x in range(1, MAP_WIDTH - 1):
                 if map_grid[y, x] == 0 and not visited[y, x]:
-                    filled_room = self.flood_fill(map_grid, (x, y))
-                    visited |= filled_room
-                    filled_rooms.append(filled_room)
+                    room = self.flood_fill(map_grid, (x, y))
+                    for pos in room:
+                        visited[pos[1], pos[0]] = True  # Mark as visited
+                    rooms.append(room)
 
-        # Now connect all rooms by tunneling
-        if len(filled_rooms) > 1:
-            for i in range(len(filled_rooms) - 1):
-                room1 = filled_rooms[i]
-                room2 = filled_rooms[i + 1]
-                # Pick random points from room1 and room2 to connect
-                point1 = np.argwhere(room1)[np.random.choice(np.argwhere(room1).shape[0])]
-                point2 = np.argwhere(room2)[np.random.choice(np.argwhere(room2).shape[0])]
+        # Now connect all rooms
+        if len(rooms) > 1:
+            for i in range(len(rooms) - 1):
+                room1 = rooms[i]
+                closest_room, closest_point1, closest_point2 = self.find_closest_room(room1, rooms[i+1:])
+                self.create_natural_tunnel(map_grid, closest_point1, closest_point2)
 
-                # Create a more natural winding tunnel between point1 and point2
-                self.create_natural_tunnel(map_grid, point1, point2)
+    def find_closest_room(self, room1, remaining_rooms):
+        """Find the closest room to room1 and return the closest points between them."""
+        closest_dist = float('inf')
+        closest_point1, closest_point2 = None, None
+        closest_room = None
 
-        # Ensure that even small, isolated rooms are connected
-        self.ensure_all_rooms_connected(map_grid)
+        for room2 in remaining_rooms:
+            for point1 in room1:
+                for point2 in room2:
+                    dist = abs(point1[0] - point2[0]) + abs(point1[1] - point2[1])
+                    if dist < closest_dist:
+                        closest_dist = dist
+                        closest_point1, closest_point2 = point1, point2
+                        closest_room = room2
+
+        return closest_room, closest_point1, closest_point2
 
     def create_natural_tunnel(self, map_grid, point1, point2):
         """Create a random winding tunnel between two points."""
@@ -163,44 +177,6 @@ class CustomEnv(gym.Env):
             else:  # Move in y direction
                 if y1 != y2:
                     y1 += np.sign(y2 - y1)
-
-    def get_random_walkable_cell(self, map_grid):
-        """Get a random walkable cell (white cell) from the map."""
-        walkable_cells = np.argwhere(map_grid == 0)  # Get all cells with value 0 (walkable)
-        
-        if len(walkable_cells) == 0:
-            raise ValueError("No walkable cells found in the map.")
-        
-        # Randomly choose a walkable cell
-        random_index = random.randint(0, len(walkable_cells) - 1)
-        return tuple(walkable_cells[random_index])
-
-    def ensure_all_rooms_connected(self, map_grid):
-        """Ensure all small rooms are connected to the main area."""
-        # Get a random walkable cell as the starting point
-        random_walkable_cell = self.get_random_walkable_cell(map_grid)
-        main_room = self.flood_fill(map_grid, random_walkable_cell)  # Start flood fill from random walkable cell
-        main_room_points = np.argwhere(main_room == 0)
-        
-        if len(main_room_points) == 0:
-            raise ValueError("Flood fill did not find any main room points.")
-        
-        for y in range(1, MAP_HEIGHT - 1):
-            for x in range(1, MAP_WIDTH - 1):
-                if map_grid[y, x] == 0 and not main_room[y, x]:
-                    # If there's a small isolated room, connect it to the main room
-                    self.connect_small_room(map_grid, main_room_points, (x, y))
-                    random_walkable_cell = self.get_random_walkable_cell(map_grid)
-                    main_room = self.flood_fill(map_grid, random_walkable_cell)  # Start flood fill from random walkable cell
-
-    def connect_small_room(self, map_grid, main_room_points, point):
-        """Connect an isolated small room to the main room."""
-        x, y = point
-        # Start tunneling towards the closest main room cell
-        closest_point = min(main_room_points, key=lambda p: abs(p[0] - y) + abs(p[1] - x))
-
-        # Create a natural tunnel to connect the small room to the main room
-        self.create_natural_tunnel(map_grid, (x, y), closest_point)
 
     def step(self, action):
         # Store the original position as a NumPy array
