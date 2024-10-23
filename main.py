@@ -6,7 +6,7 @@ import random
 
 # Define constants
 SCREEN_WIDTH, SCREEN_HEIGHT = 400, 400
-ENV_WIDTH, ENV_HEIGHT = 800, 800  # Size of the entire environment (can be bigger than screen)
+ENV_WIDTH, ENV_HEIGHT = 50 * 20, 50 * 20  # Size of the entire environment (can be bigger than screen)
 N_DISCRETE_ACTIONS = 4  # up, down, left, right
 FPS = 30
 SPEED = 5  # Speed of movement
@@ -54,7 +54,8 @@ class CustomEnv(gym.Env):
         """Generate a 2D map using cellular automaton and create Rects for walls."""
         map_grid = np.random.choice([0, 1], size=(MAP_HEIGHT, MAP_WIDTH), p=[0.5, 0.5])  # 0 is walkable, 1 is a wall
 
-        for _ in range(4):  # Apply automaton rules 4 times to smooth the map
+        # Apply cellular automaton rules multiple times to smooth the map
+        for _ in range(5):
             new_map = np.copy(map_grid)
             for y in range(1, MAP_HEIGHT - 1):
                 for x in range(1, MAP_WIDTH - 1):
@@ -64,6 +65,15 @@ class CustomEnv(gym.Env):
                     elif wall_count < 4:
                         new_map[y, x] = 0  # Become walkable
             map_grid = new_map
+
+        # Set borders to be walls
+        map_grid[0, :] = 1  # Top border
+        map_grid[-1, :] = 1  # Bottom border
+        map_grid[:, 0] = 1  # Left border
+        map_grid[:, -1] = 1  # Right border
+
+        # Ensure all white regions (rooms) are connected
+        self.connect_rooms(map_grid)
 
         # Create Rects for walls
         walls = []
@@ -75,6 +85,122 @@ class CustomEnv(gym.Env):
 
         self.walls = walls  # Store the walls for future use
         self.map = map_grid
+
+        self.save_map_as_image("debug_map.png")
+
+    def save_map_as_image(self, filename="generated_map.png"):
+        """Save the generated map as an image file."""
+        # Create a surface to draw the map
+        map_surface = pygame.Surface((MAP_WIDTH * CELL_SIZE, MAP_HEIGHT * CELL_SIZE))
+
+        # Loop through the map and draw it onto the surface
+        for y in range(MAP_HEIGHT):
+            for x in range(MAP_WIDTH):
+                rect = pygame.Rect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+                color = (0, 0, 0) if self.map[y, x] == 1 else (255, 255, 255)  # Black for walls, white for walkable
+                pygame.draw.rect(map_surface, color, rect)
+
+        # Save the surface as an image file
+        pygame.image.save(map_surface, filename)
+        print(f"Map saved as {filename}")
+
+
+    def flood_fill(self, map_grid, start_pos):
+        """Perform flood fill to find all connected walkable cells (white cells)."""
+        filled = np.zeros_like(map_grid, dtype=bool)
+        to_fill = [start_pos]
+        while to_fill:
+            x, y = to_fill.pop()
+            if not filled[y, x] and map_grid[y, x] == 0:
+                filled[y, x] = True
+                # Add adjacent walkable cells to be filled
+                if x > 0: to_fill.append((x - 1, y))
+                if x < MAP_WIDTH - 1: to_fill.append((x + 1, y))
+                if y > 0: to_fill.append((x, y - 1))
+                if y < MAP_HEIGHT - 1: to_fill.append((x, y + 1))
+        return filled
+
+    def connect_rooms(self, map_grid):
+        """Connect all isolated white rooms using random tunneling."""
+        filled_rooms = []
+        visited = np.zeros_like(map_grid, dtype=bool)
+
+        # Identify all isolated white rooms
+        for y in range(1, MAP_HEIGHT - 1):
+            for x in range(1, MAP_WIDTH - 1):
+                if map_grid[y, x] == 0 and not visited[y, x]:
+                    filled_room = self.flood_fill(map_grid, (x, y))
+                    visited |= filled_room
+                    filled_rooms.append(filled_room)
+
+        # Now connect all rooms by tunneling
+        if len(filled_rooms) > 1:
+            for i in range(len(filled_rooms) - 1):
+                room1 = filled_rooms[i]
+                room2 = filled_rooms[i + 1]
+                # Pick random points from room1 and room2 to connect
+                point1 = np.argwhere(room1)[np.random.choice(np.argwhere(room1).shape[0])]
+                point2 = np.argwhere(room2)[np.random.choice(np.argwhere(room2).shape[0])]
+
+                # Create a more natural winding tunnel between point1 and point2
+                self.create_natural_tunnel(map_grid, point1, point2)
+
+        # Ensure that even small, isolated rooms are connected
+        self.ensure_all_rooms_connected(map_grid)
+
+    def create_natural_tunnel(self, map_grid, point1, point2):
+        """Create a random winding tunnel between two points."""
+        x1, y1 = point1
+        x2, y2 = point2
+
+        while x1 != x2 or y1 != y2:
+            map_grid[y1, x1] = 0  # Carve out a walkable cell (white)
+
+            # Randomly prioritize moving horizontally or vertically
+            if random.random() < 0.5:  # Move in x direction
+                if x1 != x2:
+                    x1 += np.sign(x2 - x1)
+            else:  # Move in y direction
+                if y1 != y2:
+                    y1 += np.sign(y2 - y1)
+
+    def get_random_walkable_cell(self, map_grid):
+        """Get a random walkable cell (white cell) from the map."""
+        walkable_cells = np.argwhere(map_grid == 0)  # Get all cells with value 0 (walkable)
+        
+        if len(walkable_cells) == 0:
+            raise ValueError("No walkable cells found in the map.")
+        
+        # Randomly choose a walkable cell
+        random_index = random.randint(0, len(walkable_cells) - 1)
+        return tuple(walkable_cells[random_index])
+
+    def ensure_all_rooms_connected(self, map_grid):
+        """Ensure all small rooms are connected to the main area."""
+        # Get a random walkable cell as the starting point
+        random_walkable_cell = self.get_random_walkable_cell(map_grid)
+        main_room = self.flood_fill(map_grid, random_walkable_cell)  # Start flood fill from random walkable cell
+        main_room_points = np.argwhere(main_room == 0)
+        
+        if len(main_room_points) == 0:
+            raise ValueError("Flood fill did not find any main room points.")
+        
+        for y in range(1, MAP_HEIGHT - 1):
+            for x in range(1, MAP_WIDTH - 1):
+                if map_grid[y, x] == 0 and not main_room[y, x]:
+                    # If there's a small isolated room, connect it to the main room
+                    self.connect_small_room(map_grid, main_room_points, (x, y))
+                    random_walkable_cell = self.get_random_walkable_cell(map_grid)
+                    main_room = self.flood_fill(map_grid, random_walkable_cell)  # Start flood fill from random walkable cell
+
+    def connect_small_room(self, map_grid, main_room_points, point):
+        """Connect an isolated small room to the main room."""
+        x, y = point
+        # Start tunneling towards the closest main room cell
+        closest_point = min(main_room_points, key=lambda p: abs(p[0] - y) + abs(p[1] - x))
+
+        # Create a natural tunnel to connect the small room to the main room
+        self.create_natural_tunnel(map_grid, (x, y), closest_point)
 
     def step(self, action):
         # Store the original position as a NumPy array
