@@ -25,6 +25,7 @@ class CustomEnv(gym.Env):
 
         # Generate map using automaton
         self.map_manager = MapManager()
+        self.map_manager.set_map(0)
 
         self.agent = Agent(self.map_manager)
 
@@ -74,6 +75,11 @@ class CustomEnv(gym.Env):
         # Update the camera's position based on the agent's new position
         self.agent.update_camera()
 
+        # Check if the agent collides with any special green cell
+        for special_rect in self.map_manager.special_cells:
+            if intended_rect.colliderect(special_rect):
+                print("You touched the green cell!")
+
         return self.get_observation(), 0, False, {}
 
     def reset(self):
@@ -93,13 +99,24 @@ class CustomEnv(gym.Env):
         # Draw the map relative to the camera
         for y in range(MAP_HEIGHT):
             for x in range(MAP_WIDTH):
+                # Calculate the rectangle's position relative to the camera
                 rect = pygame.Rect(x * CELL_SIZE - self.agent.camera_x, y * CELL_SIZE - self.agent.camera_y, CELL_SIZE, CELL_SIZE)
-                color = (0, 0, 0) if self.map_manager.map[y, x] == 1 else (255, 255, 255)  # Black for walls, white for walkable
+                
+                # Determine the color based on the map cell value
+                if self.map_manager.map[y, x] == 1:
+                    color = (0, 0, 0)  # Wall: black
+                elif self.map_manager.map[y, x] == -1:
+                    color = (0, 255, 0)  # Special cell: green
+                else:
+                    color = (255, 255, 255)  # Walkable cell: white
+                    
                 pygame.draw.rect(self.screen, color, rect)
 
         # Draw the agent (red square)
         pygame.draw.rect(self.screen, (255, 0, 0), 
-                         pygame.Rect(self.agent.agent_pos[0] - self.agent.camera_x, self.agent.agent_pos[1] - self.agent.camera_y, CELL_SIZE, CELL_SIZE))
+                        pygame.Rect(self.agent.agent_pos[0] - self.agent.camera_x, 
+                                    self.agent.agent_pos[1] - self.agent.camera_y, 
+                                    CELL_SIZE, CELL_SIZE))
 
         # Update the display
         pygame.display.flip()

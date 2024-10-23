@@ -10,11 +10,19 @@ class MapManager():
     """Manager for the map."""
 
     def __init__(self):
-        # Generate map using automaton
-        self.generate_map()
+        """Initialize MapManager and generate multiple maps."""
+        self.maps = []  # List to store multiple maps
+        self.walls_list = []  # List to store walls for each map
+        self.special_cells_list = []  # List to store special cells for each map
+        self.num_maps = NB_LEVELS
+        self.current_map_index = 0  # Track which map is currently active
+
+        # Generate num_maps maps
+        for _ in range(self.num_maps):
+            self.generate_map()
 
     def generate_map(self):
-        """Generate a 2D map using cellular automaton and create Rects for walls."""
+        """Generate a single map and store it."""
         map_grid = np.random.choice([0, 1], size=(MAP_HEIGHT, MAP_WIDTH), p=[0.5, 0.5])  # 0 is walkable, 1 is a wall
 
         # Apply cellular automaton rules multiple times to smooth the map
@@ -38,18 +46,47 @@ class MapManager():
         # Ensure all white regions (rooms) are connected
         self.connect_rooms(map_grid)
 
-        # Create Rects for walls
+        # Place the special cell (-1 value) on a random walkable spot
+        self.place_special_cell(map_grid)
+
+        # Create Rects for walls and special cells
         walls = []
+        special_cells = []
+
         for y in range(MAP_HEIGHT):
             for x in range(MAP_WIDTH):
-                if map_grid[y, x] == 1:  # If it's a wall
+                if map_grid[y, x] == 1:  # Wall
                     wall_rect = pygame.Rect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE)
                     walls.append(wall_rect)
+                elif map_grid[y, x] == -1:  # Special green cell
+                    special_rect = pygame.Rect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE)
+                    special_cells.append(special_rect)
 
-        self.walls = walls  # Store the walls for future use
-        self.map = map_grid
+        # Store the map, walls, and special cells for this map
+        self.maps.append(map_grid)
+        self.walls_list.append(walls)
+        self.special_cells_list.append(special_cells)
 
-        self.save_map_as_image("debug_map.png")
+        self.set_map(len(self.maps) - 1)
+        # Save each map as an image (optional for debugging)
+        self.save_map_as_image(f"map_{len(self.maps)}.png")
+
+    def set_map(self, index):
+        """Set the current map to the one at the specified index."""
+        if 0 <= index < self.num_maps:
+            self.current_map_index = index
+            self.map = self.maps[index]
+            self.walls = self.walls_list[index]
+            self.special_cells = self.special_cells_list[index]
+        else:
+            print(f"Map index {index} out of range.")
+
+    def place_special_cell(self, map_grid):
+        """Randomly place a special cell (-1) on the map."""
+        walkable_cells = [(x, y) for y in range(1, MAP_HEIGHT - 1) for x in range(1, MAP_WIDTH - 1) if map_grid[y, x] == 0]
+        if walkable_cells:
+            x, y = random.choice(walkable_cells)
+            map_grid[y, x] = -1  # Assign -1 to mark the special green cell
 
     def flood_fill(self, map_grid, start_pos):
         """Perform flood fill to find all connected walkable cells (white cells)."""
@@ -126,16 +163,17 @@ class MapManager():
 
     def save_map_as_image(self, filename="generated_map.png"):
         """Save the generated map as an image file."""
-        # Create a surface to draw the map
         map_surface = pygame.Surface((MAP_WIDTH * CELL_SIZE, MAP_HEIGHT * CELL_SIZE))
-
-        # Loop through the map and draw it onto the surface
         for y in range(MAP_HEIGHT):
             for x in range(MAP_WIDTH):
                 rect = pygame.Rect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE)
-                color = (0, 0, 0) if self.map[y, x] == 1 else (255, 255, 255)  # Black for walls, white for walkable
+                if self.map[y, x] == 1:
+                    color = (0, 0, 0)  # Black for walls
+                elif self.map[y, x] == -1:
+                    color = (0, 255, 0)  # Green for the special cell
+                else:
+                    color = (255, 255, 255)  # White for walkable cells
                 pygame.draw.rect(map_surface, color, rect)
 
-        # Save the surface as an image file
         pygame.image.save(map_surface, filename)
         print(f"Map saved as {filename}")

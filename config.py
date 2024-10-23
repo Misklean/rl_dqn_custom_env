@@ -6,3 +6,4 @@ FPS = 30
 SPEED = 5  # Speed of movement
 CELL_SIZE = 20  # Size of the character
 MAP_WIDTH, MAP_HEIGHT = ENV_WIDTH // CELL_SIZE, ENV_HEIGHT // CELL_SIZE
+NB_LEVELS = 10
