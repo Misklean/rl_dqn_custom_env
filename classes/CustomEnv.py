@@ -1,34 +1,38 @@
 import pygame
-import gym
-from gym import spaces
 import numpy as np
 import random
+import gymnasium
+from gymnasium import spaces
+import cv2
+from pygame.surfarray import array3d
 
 from classes.MapManager import *
 from classes.Agent import *
 
 from config import *
 
-class CustomEnv(gym.Env):
+class CustomEnv(gymnasium.Env):
     """Environment with a character that can move around a procedurally generated map."""
     metadata = {'render.modes': ['human']}
 
-    def __init__(self):
+    def __init__(self, max_steps=1000, render_mode="human"):
         super(CustomEnv, self).__init__()
         self.action_space = spaces.Discrete(N_DISCRETE_ACTIONS)
-        self.observation_space = spaces.Box(low=0, high=255, shape=(SCREEN_HEIGHT, SCREEN_WIDTH, 3), dtype=np.uint8)
+        self.observation_space = spaces.Box(low=0, high=255, shape=(SCREEN_WIDTH, SCREEN_HEIGHT, 3), dtype=np.uint8)
 
         pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        self.render_mode = render_mode
+        self.max_steps = max_steps
         self.clock = pygame.time.Clock()
 
-        self.map_manager = MapManager()
-        self.map_manager.set_map(0)
+        if render_mode == "human":
+            # Only initialize a display window if render_mode is 'human'
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        elif render_mode == "rgb_array":
+            # Create an off-screen surface for capturing frames
+            self.screen = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
 
-        self.agent = Agent(self.map_manager)
-
-        # Initialize visibility grid (False for unexplored, True for explored)
-        self.visibility_grid = np.zeros((MAP_HEIGHT, MAP_WIDTH), dtype=bool)
+        self.reset()
 
     def step(self, action):
         # Store the original position as a NumPy array
@@ -70,80 +74,145 @@ class CustomEnv(gym.Env):
                     intended_pos = (wall_rect.left - CELL_SIZE, intended_pos[1])  # Snap to the left edge of the wall
                 break  # Exit the loop once a collision is found
 
-        # Update the agent's position to the intended position
-        self.agent.agent_pos = np.array(intended_pos)  # Ensure this is a NumPy array
+            # Update the agent's position
+        self.agent.agent_pos = np.array(intended_pos)
 
         # Update the camera's position based on the agent's new position
         self.agent.update_camera()
 
+        # Initialize reward
+        reward = 0  # Penalty for every step
+
         # Check if the agent collides with any special green cell
+        reached_final_cell = False
         for special_rect in self.map_manager.special_cells:
             if intended_rect.colliderect(special_rect):
+                reward += 100  # Reward for touching the green cell
                 print("You touched the green cell!")
+                reached_final_cell = True
                 self.next_map()
 
-        # Update visibility after moving
+        # Increment step counter
+        self.step_count += 1
+
+        # Check termination conditions
+        terminated = reached_final_cell and self.map_manager.is_last_map  # True if it's the final green cell
+        truncated = self.step_count >= self.max_steps  # True if step limit reached
+
         self.update_visibility()
 
-        # Check for collision with special cells
-        for special_rect in self.map_manager.special_cells:
-            if intended_rect.colliderect(special_rect):
-                print("You touched the green cell!")
-                self.next_map()
+        # Exploration reward based on the proportion of discovered cells
+        total_cells = self.visibility_grid.size
+        explored_cells = np.count_nonzero(self.visibility_grid)  # Count cells with True values
 
-        return self.get_observation(), 0, False, {}
+        # Reward agent for exploring new areas (e.g., a bonus for each 10% discovered)
+        if explored_cells > self.last_explored_cell:
+            reward += 1  # Bonus reward for each 10% of grid discovered
+        
+        self.last_explored_cell = explored_cells
+
+        # Return observation, reward, terminated, truncated, and info
+        return self.get_observation(), reward, terminated, truncated, {}
 
     def next_map(self):
         """Switch to the next map or declare the player has won the game."""
         if self.map_manager.current_map_index < len(self.map_manager.maps) - 1:
             print(f"Loading level {self.map_manager.current_map_index + 1}")
+            
+            # Set the new map
             self.map_manager.set_map(self.map_manager.current_map_index + 1)
-            self.agent = Agent(self.map_manager)  # Reset agent position on the new map
-            self.reset()  # Reset the environment with the new map
+            
+            # Reset agent position on the new map
+            self.agent = Agent(self.map_manager)
+            self.agent.agent_pos = self.agent.get_random_walkable_position()
+            self.agent.update_camera()
+
+            # Initialize the visibility grid, marking walls as "seen"
             self.visibility_grid = np.zeros((MAP_HEIGHT, MAP_WIDTH), dtype=bool)
+            for y in range(MAP_HEIGHT):
+                for x in range(MAP_WIDTH):  
+                    if self.map_manager.map[y, x] == 1:
+                        self.visibility_grid[y, x] = True  # Mark wall cells as explored
+
+            # Track explored cells count (walls only counted initially)
+            self.last_explored_cell = np.count_nonzero(self.visibility_grid)
         else:
             print("You won the game!")
 
-    def reset(self):
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+
+        self.step_count = 0
+
+        self.map_manager = MapManager()
+        self.map_manager.set_map(0)
+
+        self.agent = Agent(self.map_manager)
+
         # Reset the agent position to a random walkable cell
         self.agent.agent_pos = self.agent.get_random_walkable_position()
 
         # Reset the camera position
         self.agent.update_camera()
 
-        return self.get_observation()
+        # Initialize the visibility grid, marking walls as "seen"
+        self.visibility_grid = np.zeros((MAP_HEIGHT, MAP_WIDTH), dtype=bool)
+        for y in range(MAP_HEIGHT):
+            for x in range(MAP_WIDTH):  
+                if self.map_manager.map[y, x] == 1:
+                    self.visibility_grid[y, x] = True  # Mark wall cells as explored
 
-    def render(self, mode='human'):
-        self.screen.fill((0, 0, 0))  # Clear screen with black
+        # Track explored cells count (walls only counted initially)
+        self.last_explored_cell = np.count_nonzero(self.visibility_grid)
+
+        return self.get_observation(), {}
+    
+    def seed(self, seed=None):
+        random.seed(seed)
+        np.random.seed(seed)
+
+    def render(self):
+        # Select the rendering target based on the mode
+        render_surface = self.screen
+        mode = self.render_mode
+
+        render_surface.fill((0, 0, 0))  # Clear with black
 
         for y in range(MAP_HEIGHT):
             for x in range(MAP_WIDTH):
-                # Calculate the rectangle's position relative to the camera
-                rect = pygame.Rect(x * CELL_SIZE - self.agent.camera_x, y * CELL_SIZE - self.agent.camera_y, CELL_SIZE, CELL_SIZE)
+                rect = pygame.Rect(
+                    x * CELL_SIZE - self.agent.camera_x,
+                    y * CELL_SIZE - self.agent.camera_y,
+                    CELL_SIZE,
+                    CELL_SIZE
+                )
 
-                # If the cell has been explored
                 if self.visibility_grid[y, x]:
-                    # Determine the color based on the map cell value
                     if self.map_manager.map[y, x] == 1:
                         color = (0, 0, 0)  # Wall: black
-                    elif self.map_manager.map[y, x] == -1:  
-                        color = (0, 255, 0)  # Special cell: green (visible only when revealed)
+                    elif self.map_manager.map[y, x] == -1:
+                        color = (0, 255, 0)  # Special cell: green
                     else:
                         color = (255, 255, 255)  # Walkable cell: white
                 else:
                     color = (100, 100, 100)  # Unexplored areas: gray
 
-                pygame.draw.rect(self.screen, color, rect)
+                pygame.draw.rect(render_surface, color, rect)
 
-        # Draw the agent (red square)
-        pygame.draw.rect(self.screen, (255, 0, 0), 
-                        pygame.Rect(self.agent.agent_pos[0] - self.agent.camera_x, 
-                                    self.agent.agent_pos[1] - self.agent.camera_y, 
-                                    CELL_SIZE, CELL_SIZE))
+        pygame.draw.rect(render_surface, (255, 0, 0),
+                         pygame.Rect(
+                             self.agent.agent_pos[0] - self.agent.camera_x,
+                             self.agent.agent_pos[1] - self.agent.camera_y,
+                             CELL_SIZE, CELL_SIZE
+                         ))
 
-        # Update the display
-        pygame.display.flip()
-        self.clock.tick(FPS)
+        if mode == 'human':
+            pygame.display.flip()
+            self.clock.tick(FPS)
+
+        if mode == 'rgb_array':
+            screen_array = array3d(render_surface)
+            return np.transpose(screen_array, (1, 0, 2))
 
     def display_current_level(self):
         """Display the current level as text on the screen with a background."""
@@ -158,11 +227,18 @@ class CustomEnv(gym.Env):
         self.screen.blit(text_surface, text_rect.topleft)
 
 
+    def screen_capture(self):
+        # Capture the screen from `self.screen`, whether it's off-screen or the display surface
+        screen_array = array3d(self.screen)
+        return np.transpose(screen_array, (1, 0, 2))  # Transpose if needed to match the expected format
+
     def get_observation(self):
-        # Create an observation array representing the screen
-        observation = pygame.surfarray.array3d(pygame.display.get_surface())  # Capture the screen as a numpy array
-        observation = np.transpose(observation, (1, 0, 2))  # Transpose to match height x width x 3 shape
-        return observation
+        # Capture the screen
+        observation = self.screen_capture()
+        # Convert the surface to a 3D array with RGB channels
+        observation = array3d(pygame.surfarray.make_surface(observation))
+        # Ensure the dtype matches the observation space
+        return observation.astype(np.uint8)
 
     def update_visibility(self):
         """Update visibility grid to reveal the area around the agent."""
