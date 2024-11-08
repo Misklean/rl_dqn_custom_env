@@ -60,9 +60,14 @@ class CustomEnv(gymnasium.Env):
         # Create a new Rect for the intended position of the agent
         intended_rect = pygame.Rect(intended_pos[0], intended_pos[1], CELL_SIZE, CELL_SIZE)
 
+        # Track if the agent is unable to move due to a wall collision
+        stuck_against_wall = False
+
         # Check for collisions with walls
         for wall_rect in self.map_manager.walls:
             if intended_rect.colliderect(wall_rect):
+                # If there's a collision, prevent the move and mark as "stuck"
+                stuck_against_wall = True
                 # Snap to the edge of the wall based on the action
                 if action == 0:  # up
                     intended_pos = (intended_pos[0], wall_rect.bottom)  # Snap to the bottom edge of the wall
@@ -74,14 +79,11 @@ class CustomEnv(gymnasium.Env):
                     intended_pos = (wall_rect.left - CELL_SIZE, intended_pos[1])  # Snap to the left edge of the wall
                 break  # Exit the loop once a collision is found
 
-            # Update the agent's position
+        # Update the agent's position
         self.agent.agent_pos = np.array(intended_pos)
 
-        # Update the camera's position based on the agent's new position
-        self.agent.update_camera()
-
         # Initialize reward
-        reward = 0  # Penalty for every step
+        reward = 0  # Base penalty for every step
 
         # Check if the agent collides with any special green cell
         reached_final_cell = False
@@ -102,17 +104,21 @@ class CustomEnv(gymnasium.Env):
         self.update_visibility()
 
         # Exploration reward based on the proportion of discovered cells
-        total_cells = self.visibility_grid.size
         explored_cells = np.count_nonzero(self.visibility_grid)  # Count cells with True values
 
-        # Reward agent for exploring new areas (e.g., a bonus for each 10% discovered)
+        # Reward agent for exploring new areas
         if explored_cells > self.last_explored_cell:
-            reward += 1  # Bonus reward for each 10% of grid discovered
-        
+            reward += 1  # Bonus reward for each new cell discovered
+
         self.last_explored_cell = explored_cells
+
+        # Penalize the agent only if it’s stuck (hits a wall and can't move)
+        if stuck_against_wall and np.array_equal(original_pos, self.agent.agent_pos):
+            reward -= 5  # Penalty for getting stuck
 
         # Return observation, reward, terminated, truncated, and info
         return self.get_observation(), reward, terminated, truncated, {}
+
 
     def next_map(self):
         """Switch to the next map or declare the player has won the game."""
@@ -133,6 +139,8 @@ class CustomEnv(gymnasium.Env):
                 for x in range(MAP_WIDTH):  
                     if self.map_manager.map[y, x] == 1:
                         self.visibility_grid[y, x] = True  # Mark wall cells as explored
+
+            self.update_visibility()
 
             # Track explored cells count (walls only counted initially)
             self.last_explored_cell = np.count_nonzero(self.visibility_grid)
@@ -161,6 +169,8 @@ class CustomEnv(gymnasium.Env):
             for x in range(MAP_WIDTH):  
                 if self.map_manager.map[y, x] == 1:
                     self.visibility_grid[y, x] = True  # Mark wall cells as explored
+
+        self.update_visibility()
 
         # Track explored cells count (walls only counted initially)
         self.last_explored_cell = np.count_nonzero(self.visibility_grid)

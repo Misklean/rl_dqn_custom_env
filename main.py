@@ -5,7 +5,7 @@ import pygame
 from classes.CustomEnv import CustomEnv
 from train_model import train_model
 
-# # Main function
+# Main function
 # if __name__ == "__main__":
 #     env = CustomEnv()
 #     obs = env.reset()

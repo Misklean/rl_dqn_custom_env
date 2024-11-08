@@ -32,7 +32,7 @@ def train_model():
     GAMMA = 0.99
     EPS_START = 1.0
     EPS_END = 0.05
-    EPS_DECAY = 800
+    EPS_DECAY = 2000
     TAU = 0.005
     LR = 5e-5
 
@@ -70,7 +70,7 @@ def train_model():
             display.clear_output(wait=True)
 
     # Training configuration
-    num_episodes = 2  # Adjust based on your training needs
+    num_episodes = 2000  # Adjust based on your training needs
     num_initial_frames = 4
     video_interval = 50  # Save video every 5 episodes
     video_dir = './media/videos'  # Directory to save videos
@@ -80,12 +80,13 @@ def train_model():
 
     # Initialize steps_done
     steps_done = 0
+    
+    # Apply RecordVideo wrapper and save the model
+    env = RecordVideo(env, video_dir, episode_trigger=lambda x: x % video_interval == 0, disable_logger=True)
 
     # Training loop
     for i_episode in range(num_episodes + 1):
         if i_episode % video_interval == 0:
-            # Apply RecordVideo wrapper and save the model
-            env = RecordVideo(env, video_dir, episode_trigger=lambda x: x % video_interval == 0)
             
             # Save the model at the same time as recording video
             agent.save_model(filepath=f'./models/dqn_model_episode_{i_episode}.pth')
@@ -110,7 +111,6 @@ def train_model():
 
             # Take action in the environment
             observation, reward, terminated, truncated, _ = env.step(action)
-            reward = np.clip(reward, -1, 1)  # Clip the reward between -1 and 1
             episode_reward += reward
             done = terminated or truncated
 
