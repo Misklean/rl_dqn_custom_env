@@ -25,6 +25,9 @@ class CustomEnv(gymnasium.Env):
         self.max_steps = max_steps
         self.clock = pygame.time.Clock()
 
+        self.green_cell_img = pygame.image.load("./images/green_cell_pattern.png")
+        self.green_cell_img = pygame.transform.scale(self.green_cell_img, (CELL_SIZE, CELL_SIZE))
+
         if render_mode == "human":
             # Only initialize a display window if render_mode is 'human'
             self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -82,6 +85,8 @@ class CustomEnv(gymnasium.Env):
         # Update the agent's position
         self.agent.agent_pos = np.array(intended_pos)
 
+        self.agent.update_camera()
+
         # Initialize reward
         reward = 0  # Base penalty for every step
 
@@ -123,7 +128,6 @@ class CustomEnv(gymnasium.Env):
     def next_map(self):
         """Switch to the next map or declare the player has won the game."""
         if self.map_manager.current_map_index < len(self.map_manager.maps) - 1:
-            print(f"Loading level {self.map_manager.current_map_index + 1}")
             
             # Set the new map
             self.map_manager.set_map(self.map_manager.current_map_index + 1)
@@ -200,21 +204,24 @@ class CustomEnv(gymnasium.Env):
                 if self.visibility_grid[y, x]:
                     if self.map_manager.map[y, x] == 1:
                         color = (0, 0, 0)  # Wall: black
+                        pygame.draw.rect(render_surface, color, rect)
                     elif self.map_manager.map[y, x] == -1:
-                        color = (0, 255, 0)  # Special cell: green
+                        # Render the green cell image instead of filling with green
+                        render_surface.blit(self.green_cell_img, rect)
                     else:
                         color = (255, 255, 255)  # Walkable cell: white
+                        pygame.draw.rect(render_surface, color, rect)
                 else:
                     color = (100, 100, 100)  # Unexplored areas: gray
+                    pygame.draw.rect(render_surface, color, rect)
 
-                pygame.draw.rect(render_surface, color, rect)
-
+        # Draw the agent as a red rectangle
         pygame.draw.rect(render_surface, (255, 0, 0),
-                         pygame.Rect(
-                             self.agent.agent_pos[0] - self.agent.camera_x,
-                             self.agent.agent_pos[1] - self.agent.camera_y,
-                             CELL_SIZE, CELL_SIZE
-                         ))
+                        pygame.Rect(
+                            self.agent.agent_pos[0] - self.agent.camera_x,
+                            self.agent.agent_pos[1] - self.agent.camera_y,
+                            CELL_SIZE, CELL_SIZE
+                        ))
 
         if mode == 'human':
             pygame.display.flip()
