@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from classes.CustomEnv import CustomEnv
 from gymnasium.wrappers import RecordVideo
 
+from config import *
 
 def train_model():
     # Initialize environment
@@ -26,15 +27,6 @@ def train_model():
         "mps" if torch.backends.mps.is_available() else
         "cpu"
     )
-
-    # Hyperparameters
-    BATCH_SIZE = 256
-    GAMMA = 0.99
-    EPS_START = 1.0
-    EPS_END = 0.05
-    EPS_DECAY = 2000
-    TAU = 0.005
-    LR = 5e-5
 
     def preprocess_frame(frame):
         if len(frame.shape) == 3 and frame.shape[2] == 3:  # RGB image
@@ -68,12 +60,6 @@ def train_model():
         if is_ipython:
             display.display(plt.gcf())
             display.clear_output(wait=True)
-
-    # Training configuration
-    num_episodes = 2000  # Adjust based on your training needs
-    num_initial_frames = 4
-    video_interval = 50  # Save video every 5 episodes
-    video_dir = './media/videos'  # Directory to save videos
 
     # Instantiate DQN agent
     agent = DQNAgent(action_size=env.action_space.n, learning_rate=LR, gamma=GAMMA, epsilon=EPS_START, epsilon_min=EPS_END, epsilon_decay=EPS_DECAY, tau=TAU)
@@ -140,7 +126,8 @@ def train_model():
             if done:
                 episode_rewards.append(episode_reward)
                 plot_rewards()
-                print(f"Episode {i_episode}/{num_episodes}: Reward {episode_reward}")
+                print(f"Episode {i_episode}/{num_episodes}: Reward {episode_reward}, Epsilon {agent.epsilon}")
+                agent.epsilon = max(agent.epsilon * agent.epsilon_decay, agent.epsilon_min)
                 break
 
         # Close and save video after recording interval episodes

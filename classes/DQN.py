@@ -5,6 +5,7 @@ import numpy as np
 from collections import deque, namedtuple
 import random
 import torch.nn.functional as F
+from torch.optim.lr_scheduler import StepLR
 
 device = torch.device(
     "cuda" if torch.cuda.is_available() else
@@ -48,7 +49,10 @@ class DQNAgent:
         self.q_network = DQN(action_size).to(device)  # Define q_network and move to device
         self.target_q_network = DQN(action_size).to(device)  # Define target network and move to device
         self.target_q_network.load_state_dict(self.q_network.state_dict())
+        # self.q_network = torch.compile(self.q_network)
+        # self.target_q_network = torch.compile(self.target_q_network)
         self.optimizer = optim.AdamW(self.q_network.parameters(), lr=learning_rate, amsgrad=True)
+        self.scheduler = StepLR(self.optimizer, step_size=200, gamma=0.5)
         self.memory = ReplayMemory(50000)  # Set capacity of replay buffer
         self.gamma = gamma
         self.epsilon = epsilon
@@ -59,8 +63,7 @@ class DQNAgent:
         self.losses = []
 
     def select_action(self, state, steps_done):
-        eps_threshold = self.epsilon_min + (self.epsilon - self.epsilon_min) * np.exp(-1. * steps_done / self.epsilon_decay)
-        if np.random.rand() > eps_threshold:
+        if np.random.rand() > self.epsilon:
             with torch.no_grad():
                 return self.q_network(state).max(1)[1].view(1, 1)
         else:

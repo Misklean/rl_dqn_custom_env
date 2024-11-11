@@ -15,7 +15,7 @@ class CustomEnv(gymnasium.Env):
     """Environment with a character that can move around a procedurally generated map."""
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, max_steps=1000, render_mode="human"):
+    def __init__(self, max_steps=MAX_STEPS, render_mode="human"):
         super(CustomEnv, self).__init__()
         self.action_space = spaces.Discrete(N_DISCRETE_ACTIONS)
         self.observation_space = spaces.Box(low=0, high=255, shape=(SCREEN_WIDTH, SCREEN_HEIGHT, 3), dtype=np.uint8)
@@ -87,23 +87,30 @@ class CustomEnv(gymnasium.Env):
 
         self.agent.update_camera()
 
+        reward, terminated, truncated = self.compute_reward(stuck_against_wall, intended_rect, original_pos)
+
+        # Return observation, reward, terminated, truncated, and info
+        return self.get_observation(), reward, terminated, truncated, {}
+    
+    def compute_reward(self, stuck_against_wall, intended_rect, original_pos):
         # Initialize reward
         reward = 0  # Base penalty for every step
 
         # Check if the agent collides with any special green cell
         reached_final_cell = False
         for special_rect in self.map_manager.special_cells:
-            if intended_rect.colliderect(special_rect):
-                reward += 100  # Reward for touching the green cell
+            if intended_rect.colliderect(special_rect) and not self.green_cell_touched:
+                reward += 10
                 print("You touched the green cell!")
                 reached_final_cell = True
-                self.next_map()
+                self.green_cell_touched = True
+                no_more_map = self.next_map()
 
         # Increment step counter
         self.step_count += 1
 
         # Check termination conditions
-        terminated = reached_final_cell and self.map_manager.is_last_map  # True if it's the final green cell
+        terminated = reached_final_cell and no_more_map # True if it's the final green cell
         truncated = self.step_count >= self.max_steps  # True if step limit reached
 
         self.update_visibility()
@@ -117,17 +124,17 @@ class CustomEnv(gymnasium.Env):
 
         self.last_explored_cell = explored_cells
 
-        # Penalize the agent only if it’s stuck (hits a wall and can't move)
-        if stuck_against_wall and np.array_equal(original_pos, self.agent.agent_pos):
-            reward -= 5  # Penalty for getting stuck
+        # # Penalize the agent only if it’s stuck (hits a wall and can't move)
+        # if stuck_against_wall and np.array_equal(original_pos, self.agent.agent_pos):
+        #     reward -= 5  # Penalty for getting stuck
 
-        # Return observation, reward, terminated, truncated, and info
-        return self.get_observation(), reward, terminated, truncated, {}
+        return reward, terminated, truncated
 
 
     def next_map(self):
         """Switch to the next map or declare the player has won the game."""
         if self.map_manager.current_map_index < len(self.map_manager.maps) - 1:
+            self.green_cell_touched = False
             
             # Set the new map
             self.map_manager.set_map(self.map_manager.current_map_index + 1)
@@ -148,8 +155,9 @@ class CustomEnv(gymnasium.Env):
 
             # Track explored cells count (walls only counted initially)
             self.last_explored_cell = np.count_nonzero(self.visibility_grid)
+            return False
         else:
-            print("You won the game!")
+            return True
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -178,6 +186,7 @@ class CustomEnv(gymnasium.Env):
 
         # Track explored cells count (walls only counted initially)
         self.last_explored_cell = np.count_nonzero(self.visibility_grid)
+        self.green_cell_touched = False
 
         return self.get_observation(), {}
     

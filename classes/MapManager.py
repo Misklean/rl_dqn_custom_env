@@ -14,7 +14,6 @@ class MapManager():
         self.special_cells_list = []  # List to store special cells for each map
         self.num_maps = NB_LEVELS
         self.current_map_index = 0  # Track which map is currently active
-        self.is_last_map = False
 
         # Generate num_maps maps
         for _ in range(self.num_maps):
@@ -77,8 +76,6 @@ class MapManager():
             self.map = self.maps[index]
             self.walls = self.walls_list[index]
             self.special_cells = self.special_cells_list[index]
-            if index == len(self.maps):
-                self.is_last_map = True
         else:
             print(f"Map index {index} out of range.")
 
