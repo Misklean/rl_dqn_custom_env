@@ -23,7 +23,7 @@ class CustomEnv(gymnasium.Env):
         pygame.init()
         self.render_mode = render_mode
         self.max_steps = max_steps
-        self.clock = pygame.time.Clock()
+        # self.clock = pygame.time.Clock()
 
         self.green_cell_img = pygame.image.load("./images/green_cell_pattern.png")
         self.green_cell_img = pygame.transform.scale(self.green_cell_img, (CELL_SIZE, CELL_SIZE))
@@ -40,8 +40,6 @@ class CustomEnv(gymnasium.Env):
     def step(self, action):
         # Store the original position as a NumPy array
         original_pos = self.agent.agent_pos.copy()
-
-        # Create a Rect for the agent
         agent_rect = pygame.Rect(self.agent.agent_pos[0], self.agent.agent_pos[1], CELL_SIZE, CELL_SIZE)
 
         # Calculate intended new position based on action
@@ -94,13 +92,13 @@ class CustomEnv(gymnasium.Env):
     
     def compute_reward(self, stuck_against_wall, intended_rect, original_pos):
         # Initialize reward
-        reward = 0  # Base penalty for every step
+        reward = -1  # Base penalty for every step
 
         # Check if the agent collides with any special green cell
         reached_final_cell = False
         for special_rect in self.map_manager.special_cells:
             if intended_rect.colliderect(special_rect) and not self.green_cell_touched:
-                reward += 10
+                reward += 500
                 print("You touched the green cell!")
                 reached_final_cell = True
                 self.green_cell_touched = True
@@ -164,18 +162,16 @@ class CustomEnv(gymnasium.Env):
 
         self.step_count = 0
 
+        # Initialize map manager and agent without involving surfaces
         self.map_manager = MapManager()
         self.map_manager.set_map(0)
 
         self.agent = Agent(self.map_manager)
 
-        # Reset the agent position to a random walkable cell
+        # Initialize agent position without surfaces
         self.agent.agent_pos = self.agent.get_random_walkable_position()
 
-        # Reset the camera position
-        self.agent.update_camera()
-
-        # Initialize the visibility grid, marking walls as "seen"
+        # Initialize visibility grid and track explored cells
         self.visibility_grid = np.zeros((MAP_HEIGHT, MAP_WIDTH), dtype=bool)
         for y in range(MAP_HEIGHT):
             for x in range(MAP_WIDTH):  
@@ -184,12 +180,12 @@ class CustomEnv(gymnasium.Env):
 
         self.update_visibility()
 
-        # Track explored cells count (walls only counted initially)
         self.last_explored_cell = np.count_nonzero(self.visibility_grid)
         self.green_cell_touched = False
 
+        # Return game state without rendering surfaces
         return self.get_observation(), {}
-    
+        
     def seed(self, seed=None):
         random.seed(seed)
         np.random.seed(seed)
@@ -199,6 +195,7 @@ class CustomEnv(gymnasium.Env):
         render_surface = self.screen
         mode = self.render_mode
 
+        # Rendering logic (unchanged, but avoids sharing surfaces)
         render_surface.fill((0, 0, 0))  # Clear with black
 
         for y in range(MAP_HEIGHT):
@@ -215,7 +212,6 @@ class CustomEnv(gymnasium.Env):
                         color = (0, 0, 0)  # Wall: black
                         pygame.draw.rect(render_surface, color, rect)
                     elif self.map_manager.map[y, x] == -1:
-                        # Render the green cell image instead of filling with green
                         render_surface.blit(self.green_cell_img, rect)
                     else:
                         color = (255, 255, 255)  # Walkable cell: white
@@ -232,13 +228,15 @@ class CustomEnv(gymnasium.Env):
                             CELL_SIZE, CELL_SIZE
                         ))
 
+        # Handle different render modes
         if mode == 'human':
             pygame.display.flip()
             self.clock.tick(FPS)
 
         if mode == 'rgb_array':
+            # Capture the surface and return as an array (picklable)
             screen_array = array3d(render_surface)
-            return np.transpose(screen_array, (1, 0, 2))
+            return np.transpose(screen_array, (1, 0, 2))  # Transpose for compatibility
 
     def display_current_level(self):
         """Display the current level as text on the screen with a background."""
@@ -253,18 +251,16 @@ class CustomEnv(gymnasium.Env):
         self.screen.blit(text_surface, text_rect.topleft)
 
 
+    def get_observation(self):
+        # Capture the screen as an RGB array (using NumPy for pickling compatibility)
+        observation = self.screen_capture()
+        return observation.astype(np.uint8)
+
     def screen_capture(self):
         # Capture the screen from `self.screen`, whether it's off-screen or the display surface
         screen_array = array3d(self.screen)
         return np.transpose(screen_array, (1, 0, 2))  # Transpose if needed to match the expected format
 
-    def get_observation(self):
-        # Capture the screen
-        observation = self.screen_capture()
-        # Convert the surface to a 3D array with RGB channels
-        observation = array3d(pygame.surfarray.make_surface(observation))
-        # Ensure the dtype matches the observation space
-        return observation.astype(np.uint8)
 
     def update_visibility(self):
         """Update visibility grid to reveal the area around the agent."""

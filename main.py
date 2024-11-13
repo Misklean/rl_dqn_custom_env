@@ -3,7 +3,7 @@ import pygame
 from classes.CustomEnv import *
 import pygame
 from classes.CustomEnv import CustomEnv
-from train_model import train_model
+from classes.DQN import train_multiple_agents
 
 # # Main function
 # if __name__ == "__main__":
@@ -37,4 +37,4 @@ from train_model import train_model
 
 # Main function
 if __name__ == "__main__":
-    train_model()
+    train_multiple_agents()
