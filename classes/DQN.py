@@ -10,10 +10,11 @@ from classes.CustomEnv import CustomEnv
 import torch.nn.functional as F
 import pygame
 from queue import Queue
-
+from gymnasium.wrappers import RecordVideo
 
 from config import *
 
+model_lock = threading.Lock()
 Transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'))
 
 # Set device
@@ -77,7 +78,7 @@ class ReplayMemory:
         return self.memory.qsize()
 
 class Agent(threading.Thread):
-    def __init__(self, id, global_dqn, target_dqn, memory, env, hyperparams):
+    def __init__(self, id, global_dqn, target_dqn, memory, env, hyperparams, record_interval=50):
         super(Agent, self).__init__()
         self.id = id
         self.global_dqn = global_dqn
@@ -90,6 +91,7 @@ class Agent(threading.Thread):
         self.gamma = hyperparams['gamma']
         self.global_optimizer = optim.AdamW(self.global_dqn.parameters(), lr=0.001, amsgrad=True)
         self.global_memory = memory
+        self.record_interval = record_interval
 
     def select_action(self, state):
         if np.random.rand() > self.epsilon:
@@ -99,7 +101,7 @@ class Agent(threading.Thread):
             return torch.tensor([[random.randrange(self.env.action_space.n)]], device=device, dtype=torch.long)
 
     def run(self):
-        for i_episode in range(self.hyperparams['num_episodes']):
+        for i_episode in range(self.hyperparams['num_episodes'] + 1):
             state, info = self.env.reset()
             state = preprocess_frame(state)
             frame_buffer = deque([state] * 4, maxlen=4)
@@ -124,8 +126,8 @@ class Agent(threading.Thread):
                 state_tensor = next_state_tensor
 
                 if done:
-                    print(f"Agent {self.id} - Episode {i_episode}: Reward {episode_reward}")
-                    self.epsilon = max(self.epsilon * self.epsilon_decay, self.epsilon_min)
+                    print(f"Agent {self.id} - Episode {i_episode}: Reward {episode_reward} Epsilon {self.epsilon}")
+                    self.epsilon = max(self.epsilon - self.epsilon_decay, self.epsilon_min)
                     break
 
                 if len(self.global_memory) >= self.hyperparams['batch_size']:
@@ -134,43 +136,44 @@ class Agent(threading.Thread):
             self.update_target_network()
 
     def optimize_global_model(self):
-        if len(self.global_memory) < self.hyperparams['batch_size']:
-            return
+        with model_lock:
 
-        transitions = self.global_memory.sample(self.hyperparams['batch_size'])
-        batch = Transition(*zip(*transitions))
+            if len(self.global_memory) < self.hyperparams['batch_size']:
+                return
 
-        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.next_state)), device=device, dtype=torch.bool)
-        state_batch = torch.cat(batch.state).to(device)
-        action_batch = torch.cat(batch.action).to(device)
-        reward_batch = torch.cat(batch.reward).to(device)
-        non_final_next_states = torch.cat([s for s in batch.next_state if s is not None]).to(device)
+            transitions = self.global_memory.sample(self.hyperparams['batch_size'])
+            batch = Transition(*zip(*transitions))
 
-        # Ensure the state-action values are not modified in-place
-        state_action_values = self.global_dqn(state_batch).gather(1, action_batch)
+            non_final_mask = torch.tensor(tuple(map(lambda s: s is not None, batch.next_state)), device=device, dtype=torch.bool)
+            state_batch = torch.cat(batch.state).to(device)
+            action_batch = torch.cat(batch.action).to(device)
+            reward_batch = torch.cat(batch.reward).to(device)
+            non_final_next_states = torch.cat([s for s in batch.next_state if s is not None]).to(device)
 
-        # Initialize next_state_values tensor without in-place modification
-        next_state_values = torch.zeros(self.hyperparams['batch_size'], device=device)
+            # Ensure the state-action values are not modified in-place
+            state_action_values = self.global_dqn(state_batch).gather(1, action_batch)
 
-        # Use detach() to avoid tracking gradients
-        next_state_actions = self.global_dqn(non_final_next_states).max(1)[1].unsqueeze(1)
-        next_state_values[non_final_mask] = self.target_dqn(non_final_next_states).gather(1, next_state_actions).detach().squeeze()
+            # Initialize next_state_values tensor without in-place modification
+            next_state_values = torch.zeros(self.hyperparams['batch_size'], device=device)
 
-        # Calculate expected state-action values
-        expected_state_action_values = ((next_state_values * self.gamma) + reward_batch).to(device)
+            # Use detach() to avoid tracking gradients
+            next_state_actions = self.global_dqn(non_final_next_states).max(1)[1].unsqueeze(1)
+            next_state_values[non_final_mask] = self.target_dqn(non_final_next_states).gather(1, next_state_actions).detach().squeeze()
 
-        # Calculate loss (without in-place modification)
-        loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
+            # Calculate expected state-action values
+            expected_state_action_values = ((next_state_values * self.gamma) + reward_batch).to(device)
 
-        # Zero gradients before backward pass
-        self.global_optimizer.zero_grad()
+            # Calculate loss (without in-place modification)
+            loss = F.smooth_l1_loss(state_action_values, expected_state_action_values.unsqueeze(1))
 
-        # Backpropagate the loss
-        loss.backward()
+            # Zero gradients before backward pass
+            self.global_optimizer.zero_grad()
 
-        # Update model weights
-        self.global_optimizer.step()
+            # Backpropagate the loss
+            loss.backward()
 
+            # Update model weights
+            self.global_optimizer.step()
 
     def update_target_network(self):
         self.target_dqn.load_state_dict(self.global_dqn.state_dict())
@@ -178,24 +181,38 @@ class Agent(threading.Thread):
 def train_multiple_agents():
     torch.autograd.set_detect_anomaly(True)
 
-    envs = [CustomEnv(max_steps=MAX_STEPS, render_mode="rgb_array") for _ in range(4)]
+    # Initialize environments, DQNs, and memory
+    envs = [
+        RecordVideo(
+            CustomEnv(max_steps=MAX_STEPS, render_mode="rgb_array"),
+            video_folder=f"{video_dir}/agent_{i}",
+            episode_trigger=lambda episode: episode % video_interval == 0,
+            disable_logger=True
+        ) for i in range(num_agents)
+    ]
+
     global_dqn = GlobalDQN(N_DISCRETE_ACTIONS).to(device)
     target_dqn = GlobalDQN(N_DISCRETE_ACTIONS).to(device)
     target_dqn.load_state_dict(global_dqn.state_dict())
     memory = ReplayMemory(50000)
 
     hyperparams_list = [
-        {"epsilon": 1.0, "epsilon_min": 0.05, "epsilon_decay": 0.995, "gamma": 0.99, "num_episodes": 500, "batch_size": 64},
-        {"epsilon": 1.0, "epsilon_min": 0.05, "epsilon_decay": 0.995, "gamma": 0.99, "num_episodes": 500, "batch_size": 64},
-        {"epsilon": 1.0, "epsilon_min": 0.05, "epsilon_decay": 0.995, "gamma": 0.99, "num_episodes": 500, "batch_size": 64},
-        {"epsilon": 1.0, "epsilon_min": 0.05, "epsilon_decay": 0.995, "gamma": 0.99, "num_episodes": 500, "batch_size": 64}
+        {"epsilon": 1.0, "epsilon_min": 0.05, "epsilon_decay": (1 - 0.05) / num_episodes, "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64},
+        {"epsilon": 1.0, "epsilon_min": 0.05, "epsilon_decay": (1 - 0.05) / (num_episodes * 1.1), "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64},
+        {"epsilon": 1.0, "epsilon_min": 0.05, "epsilon_decay": (1 - 0.05) / (num_episodes * 0.9), "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64},
+        {"epsilon": 1.0, "epsilon_min": 0, "epsilon_decay": (1 - 0.05) / num_episodes, "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64}
     ]
 
-    agents = [Agent(i, global_dqn, target_dqn, memory, envs[i], hyperparams_list[i]) for i in range(4)]
+    # Initialize agents with hyperparameters
+    agents = [
+        Agent(i, global_dqn, target_dqn, memory, envs[i], hyperparams_list[i % len(hyperparams_list)])
+        for i in range(num_agents)
+    ]
     
+    # Start agent threads
     for agent in agents:
         agent.start()
     
+    # Join all agents
     for agent in agents:
         agent.join()
-

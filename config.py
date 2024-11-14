@@ -12,12 +12,13 @@ NB_LEVELS = 1
 MAX_STEPS = 500
 
 # Training configuration
-num_episodes = 1000  # Adjust based on your training needs
+num_episodes = 10  # Adjust based on your training needs
 num_initial_frames = 4
 video_interval = 50  # Save video every 5 episodes
 video_dir = './media/videos'  # Directory to save videos
 n_last_episodes = 50
 sync_interval = 10
+num_agents = 32
 
 # Hyperparameters
 BATCH_SIZE = 64
