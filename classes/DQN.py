@@ -11,6 +11,7 @@ import torch.nn.functional as F
 import pygame
 from queue import Queue
 from gymnasium.wrappers import RecordVideo
+import time
 
 from config import *
 
@@ -43,19 +44,22 @@ def stack_frames(frames):
     return np.stack(frames, axis=0)
 
 class GlobalDQN(nn.Module):
-    def __init__(self, n_actions):
+    def __init__(self, n_frames, n_actions):
         super(GlobalDQN, self).__init__()
-        self.conv1 = nn.Conv2d(4, 32, kernel_size=8, stride=4)
+        self.conv1 = nn.Conv2d(n_frames, 32, kernel_size=8, stride=4)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
-        self.fc1 = nn.Linear(64 * 9 * 9, 512)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
+        self.fc1 = nn.Linear(64 * 7 * 7, 512)  # Assuming input resolution is 84x84
         self.fc2 = nn.Linear(512, n_actions)
 
     def forward(self, x):
-        x = torch.relu(self.conv1(x))
-        x = torch.relu(self.conv2(x))
-        x = x.view(x.size(0), -1)
-        x = torch.relu(self.fc1(x))
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = x.view(x.size(0), -1)  # Flatten the convolutional output
+        x = F.relu(self.fc1(x))
         return self.fc2(x)
+
 
 class ReplayMemory:
     def __init__(self, capacity):
@@ -78,7 +82,7 @@ class ReplayMemory:
         return self.memory.qsize()
 
 class Agent(threading.Thread):
-    def __init__(self, id, global_dqn, target_dqn, memory, env, hyperparams, record_interval=50):
+    def __init__(self, id, global_dqn, target_dqn, memory, env, hyperparams, record_interval=50, update_interval=5):
         super(Agent, self).__init__()
         self.id = id
         self.global_dqn = global_dqn
@@ -92,6 +96,8 @@ class Agent(threading.Thread):
         self.global_optimizer = optim.AdamW(self.global_dqn.parameters(), lr=0.001, amsgrad=True)
         self.global_memory = memory
         self.record_interval = record_interval
+        self.update_interval = update_interval
+        self.local_steps = 0
 
     def select_action(self, state):
         if np.random.rand() > self.epsilon:
@@ -104,7 +110,7 @@ class Agent(threading.Thread):
         for i_episode in range(self.hyperparams['num_episodes'] + 1):
             state, info = self.env.reset()
             state = preprocess_frame(state)
-            frame_buffer = deque([state] * 4, maxlen=4)
+            frame_buffer = deque([state] * num_initial_frames, maxlen=num_initial_frames)
             state_tensor = torch.tensor(stack_frames(frame_buffer), dtype=torch.float32, device=device).unsqueeze(0)
             episode_reward = 0
             clock = pygame.time.Clock()
@@ -128,10 +134,20 @@ class Agent(threading.Thread):
                 if done:
                     print(f"Agent {self.id} - Episode {i_episode}: Reward {episode_reward} Epsilon {self.epsilon}")
                     self.epsilon = max(self.epsilon - self.epsilon_decay, self.epsilon_min)
+
+                    # Save the model if the episode is a video interval
+                    if i_episode % video_interval == 0:
+                        model_path = f"./models/model_episode_{i_episode}_agent_{self.id}.pth"
+                        torch.save(self.global_model.state_dict(), model_path)
+                        print(f"Model saved at {model_path}")
                     break
 
                 if len(self.global_memory) >= self.hyperparams['batch_size']:
-                    self.optimize_global_model()
+                    if self.local_steps % self.update_interval == 0:
+                        self.optimize_global_model()
+
+                self.local_steps = self.local_steps + 1
+
 
             self.update_target_network()
 
@@ -191,8 +207,8 @@ def train_multiple_agents():
         ) for i in range(num_agents)
     ]
 
-    global_dqn = GlobalDQN(N_DISCRETE_ACTIONS).to(device)
-    target_dqn = GlobalDQN(N_DISCRETE_ACTIONS).to(device)
+    global_dqn = GlobalDQN(num_initial_frames, N_DISCRETE_ACTIONS).to(device)
+    target_dqn = GlobalDQN(num_initial_frames, N_DISCRETE_ACTIONS).to(device)
     target_dqn.load_state_dict(global_dqn.state_dict())
     memory = ReplayMemory(50000)
 
@@ -208,6 +224,8 @@ def train_multiple_agents():
         Agent(i, global_dqn, target_dqn, memory, envs[i], hyperparams_list[i % len(hyperparams_list)])
         for i in range(num_agents)
     ]
+
+    start_time = time.time()
     
     # Start agent threads
     for agent in agents:
@@ -216,3 +234,7 @@ def train_multiple_agents():
     # Join all agents
     for agent in agents:
         agent.join()
+
+    end_time = time.time()  # End timing
+    total_time = end_time - start_time  # Calculate elapsed time
+    print(f"Training completed in {total_time:.2f} seconds")
