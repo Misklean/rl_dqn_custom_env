@@ -138,8 +138,7 @@ class Agent(threading.Thread):
                     # Save the model if the episode is a video interval
                     if i_episode % video_interval == 0:
                         model_path = f"./models/model_episode_{i_episode}_agent_{self.id}.pth"
-                        torch.save(self.global_model.state_dict(), model_path)
-                        print(f"Model saved at {model_path}")
+                        torch.save(self.global_dqn.state_dict(), model_path)
                     break
 
                 if len(self.global_memory) >= self.hyperparams['batch_size']:
@@ -213,10 +212,10 @@ def train_multiple_agents():
     memory = ReplayMemory(50000)
 
     hyperparams_list = [
-        {"epsilon": 1.0, "epsilon_min": 0.05, "epsilon_decay": (1 - 0.05) / num_episodes, "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64},
-        {"epsilon": 1.0, "epsilon_min": 0.05, "epsilon_decay": (1 - 0.05) / (num_episodes * 1.1), "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64},
-        {"epsilon": 1.0, "epsilon_min": 0.05, "epsilon_decay": (1 - 0.05) / (num_episodes * 0.9), "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64},
-        {"epsilon": 1.0, "epsilon_min": 0, "epsilon_decay": (1 - 0.05) / num_episodes, "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64}
+        {"epsilon": 0.7, "epsilon_min": 0.05, "epsilon_decay": (1 - 0.05) / num_episodes, "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64},
+        {"epsilon": 0.7, "epsilon_min": 0.05, "epsilon_decay": (1 - 0.05) / (num_episodes * 1.1), "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64},
+        {"epsilon": 0.7, "epsilon_min": 0.05, "epsilon_decay": (1 - 0.05) / (num_episodes * 0.9), "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64},
+        {"epsilon": 0.7, "epsilon_min": 0, "epsilon_decay": (1 - 0.05) / num_episodes, "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64}
     ]
 
     # Initialize agents with hyperparameters
@@ -224,6 +223,13 @@ def train_multiple_agents():
         Agent(i, global_dqn, target_dqn, memory, envs[i], hyperparams_list[i % len(hyperparams_list)])
         for i in range(num_agents)
     ]
+
+    for i, agent in enumerate(agents):
+        model_path = f"./best_models/model_episode_{last_final_episode}_agent_{i}.pth"
+        agent.global_dqn.load_state_dict(torch.load(model_path))
+        agent.target_dqn.load_state_dict(agent.global_dqn.state_dict())  # Sync target model
+        print(f"Agent {i} loaded model from {model_path}")
+
 
     start_time = time.time()
     

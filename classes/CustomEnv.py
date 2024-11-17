@@ -92,7 +92,7 @@ class CustomEnv(gymnasium.Env):
     
     def compute_reward(self, stuck_against_wall, intended_rect, original_pos):
         # Initialize reward
-        reward = -1  # Base penalty for every step
+        reward = 0  # Base penalty for every step
 
         # Check if the agent collides with any special green cell
         reached_final_cell = False
@@ -122,9 +122,9 @@ class CustomEnv(gymnasium.Env):
 
         self.last_explored_cell = explored_cells
 
-        # # Penalize the agent only if it’s stuck (hits a wall and can't move)
-        # if stuck_against_wall and np.array_equal(original_pos, self.agent.agent_pos):
-        #     reward -= 5  # Penalty for getting stuck
+        # Penalize the agent only if it’s stuck (hits a wall and can't move)
+        if stuck_against_wall and np.array_equal(original_pos, self.agent.agent_pos):
+            reward -= 1  # Penalty for getting stuck
 
         return reward, terminated, truncated
 
