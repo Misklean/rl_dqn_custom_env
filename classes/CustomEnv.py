@@ -100,7 +100,7 @@ class CustomEnv(gymnasium.Env):
             if intended_rect.colliderect(special_rect):
                 if idx not in self.touched_cells:  # Check if this cell hasn't been touched before
                     self.touched_cells.append(idx)  # Mark the cell as touched
-                    reward += 50
+                    reward += len(self.touched_cells) * 10
                     print(f"Agent {self.rank}: You touched a new green cell! {len(self.touched_cells)} of {len(self.map_manager.special_cells)} touched.")
 
         # Increment step counter
@@ -122,9 +122,9 @@ class CustomEnv(gymnasium.Env):
 
         self.last_explored_cell = explored_cells
 
-        # Penalize the agent only if it’s stuck (hits a wall and can't move)
-        if stuck_against_wall and np.array_equal(original_pos, self.agent.agent_pos):
-            reward -= 1  # Penalty for getting stuck
+        # # Penalize the agent only if it’s stuck (hits a wall and can't move)
+        # if stuck_against_wall and np.array_equal(original_pos, self.agent.agent_pos):
+        #     reward -= 1  # Penalty for getting stuck
 
         return reward, terminated, truncated
 
