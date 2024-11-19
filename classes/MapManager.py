@@ -14,6 +14,7 @@ class MapManager():
         self.special_cells_list = []  # List to store special cells for each map
         self.num_maps = NB_LEVELS
         self.current_map_index = 0  # Track which map is currently active
+        self.num_goal = NB_GREEN_CELLS
 
         # Generate num_maps maps
         for _ in range(self.num_maps):
@@ -45,7 +46,7 @@ class MapManager():
         self.connect_rooms(map_grid)
 
         # Place the special cell (-1 value) on a random walkable spot
-        self.place_special_cell(map_grid)
+        self.place_special_cells(map_grid)
 
         # Create Rects for walls and special cells
         walls = []
@@ -79,12 +80,14 @@ class MapManager():
         else:
             print(f"Map index {index} out of range.")
 
-    def place_special_cell(self, map_grid):
-        """Randomly place a special cell (-1) on the map."""
+    def place_special_cells(self, map_grid):
+        """Randomly place multiple special cells (-1) on the map."""
         walkable_cells = [(x, y) for y in range(1, MAP_HEIGHT - 1) for x in range(1, MAP_WIDTH - 1) if map_grid[y, x] == 0]
-        if walkable_cells:
-            x, y = random.choice(walkable_cells)
-            map_grid[y, x] = -1  # Assign -1 to mark the special green cell
+        if len(walkable_cells) >= self.num_goal:
+            selected_cells = random.sample(walkable_cells, self.num_goal)  # Randomly select 10 unique cells
+            for x, y in selected_cells:
+                map_grid[y, x] = -1  # Assign -1 to mark the special green cells
+
 
     def flood_fill(self, map_grid, start_pos):
         """Perform flood fill to find all connected walkable cells (white cells)."""

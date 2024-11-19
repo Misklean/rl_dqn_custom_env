@@ -15,7 +15,7 @@ class CustomEnv(gymnasium.Env):
     """Environment with a character that can move around a procedurally generated map."""
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, max_steps=MAX_STEPS, render_mode="human"):
+    def __init__(self, max_steps=MAX_STEPS, render_mode="human", rank=1):
         super(CustomEnv, self).__init__()
         self.action_space = spaces.Discrete(N_DISCRETE_ACTIONS)
         self.observation_space = spaces.Box(low=0, high=255, shape=(SCREEN_WIDTH, SCREEN_HEIGHT, 3), dtype=np.uint8)
@@ -23,7 +23,7 @@ class CustomEnv(gymnasium.Env):
         pygame.init()
         self.render_mode = render_mode
         self.max_steps = max_steps
-        # self.clock = pygame.time.Clock()
+        self.rank = rank
 
         self.green_cell_img = pygame.image.load("./images/green_cell_pattern.png")
         self.green_cell_img = pygame.transform.scale(self.green_cell_img, (CELL_SIZE, CELL_SIZE))
@@ -31,6 +31,7 @@ class CustomEnv(gymnasium.Env):
         if render_mode == "human":
             # Only initialize a display window if render_mode is 'human'
             self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+            self.clock = pygame.time.Clock()
         elif render_mode == "rgb_array":
             # Create an off-screen surface for capturing frames
             self.screen = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -95,21 +96,20 @@ class CustomEnv(gymnasium.Env):
         reward = 0  # Base penalty for every step
 
         # Check if the agent collides with any special green cell
-        reached_final_cell = False
-        for special_rect in self.map_manager.special_cells:
-            if intended_rect.colliderect(special_rect) and not self.green_cell_touched:
-                reward += 500
-                print("You touched the green cell!")
-                reached_final_cell = True
-                self.green_cell_touched = True
-                no_more_map = self.next_map()
+        for idx, special_rect in enumerate(self.map_manager.special_cells):
+            if intended_rect.colliderect(special_rect):
+                if idx not in self.touched_cells:  # Check if this cell hasn't been touched before
+                    self.touched_cells.append(idx)  # Mark the cell as touched
+                    reward += 50
+                    print(f"Agent {self.rank}: You touched a new green cell! {len(self.touched_cells)} of {len(self.map_manager.special_cells)} touched.")
 
         # Increment step counter
         self.step_count += 1
 
         # Check termination conditions
-        terminated = reached_final_cell and no_more_map # True if it's the final green cell
-        truncated = self.step_count >= self.max_steps  # True if step limit reached
+        all_cells_touched = len(self.touched_cells) == len(self.map_manager.special_cells)
+        terminated = all_cells_touched  # End the game if all green cells are touched
+        truncated = self.step_count >= self.max_steps  # End if step limit is reached
 
         self.update_visibility()
 
@@ -127,7 +127,6 @@ class CustomEnv(gymnasium.Env):
             reward -= 1  # Penalty for getting stuck
 
         return reward, terminated, truncated
-
 
     def next_map(self):
         """Switch to the next map or declare the player has won the game."""
@@ -161,6 +160,7 @@ class CustomEnv(gymnasium.Env):
         super().reset(seed=seed)
 
         self.step_count = 0
+        self.touched_cells = []
 
         # Initialize map manager and agent without involving surfaces
         self.map_manager = MapManager()

@@ -10,16 +10,16 @@ SPEED = 5  # Speed of movement
 MAP_WIDTH, MAP_HEIGHT = ENV_WIDTH // CELL_SIZE, ENV_HEIGHT // CELL_SIZE
 NB_LEVELS = 1
 MAX_STEPS = 500
+NB_GREEN_CELLS = 10
 
 # Training configuration
-num_episodes = 10000  # Adjust based on your training needs
+num_episodes = 1000  # Adjust based on your training needs
 num_initial_frames = 8
-video_interval = 200  # Save video every 5 episodes
+video_interval = 50  # Save video every 5 episodes
 video_dir = './media/videos'  # Directory to save videos
-n_last_episodes = 50
 sync_interval = 10
 num_agents = 4
-last_final_episode = 6200
+last_final_episode = -1
 
 # Hyperparameters
 BATCH_SIZE = 64

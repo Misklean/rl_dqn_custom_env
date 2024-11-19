@@ -12,6 +12,7 @@ import pygame
 from queue import Queue
 from gymnasium.wrappers import RecordVideo
 import time
+import matplotlib.pyplot as plt
 
 from config import *
 
@@ -24,6 +25,22 @@ device = torch.device(
     "mps" if torch.backends.mps.is_available() else
     "cpu"
 )
+
+def plot_rewards(agent_rewards, video_interval, num_agents, save_path='agent_rewards_plot.png'):
+    plt.figure(figsize=(10, 6))
+    for i, rewards in enumerate(agent_rewards):
+        moving_avg = [
+            np.mean(rewards[max(0, j - video_interval):j + 1])
+            for j in range(len(rewards))
+        ]
+        plt.plot(moving_avg, label=f'Agent {i}', alpha=0.8)
+    plt.xlabel('Episodes')
+    plt.ylabel('Mean Reward (Last Video Interval)')
+    plt.title('Agent Rewards')
+    plt.legend()
+    plt.grid()
+    plt.savefig(save_path)
+    plt.close()  # Close the figure to avoid showing it interactively
 
 def preprocess_frame(frame):
     if len(frame.shape) == 3 and frame.shape[2] == 3:  # RGB image
@@ -98,6 +115,7 @@ class Agent(threading.Thread):
         self.record_interval = record_interval
         self.update_interval = update_interval
         self.local_steps = 0
+        self.rewards = []  # Store rewards per episode
 
     def select_action(self, state):
         if np.random.rand() > self.epsilon:
@@ -135,6 +153,9 @@ class Agent(threading.Thread):
                     print(f"Agent {self.id} - Episode {i_episode}: Reward {episode_reward} Epsilon {self.epsilon}")
                     self.epsilon = max(self.epsilon - self.epsilon_decay, self.epsilon_min)
 
+                    # Append reward for plotting
+                    self.rewards.append(episode_reward)
+
                     # Save the model if the episode is a video interval
                     if i_episode % video_interval == 0:
                         model_path = f"./models/model_episode_{i_episode}_agent_{self.id}.pth"
@@ -146,7 +167,6 @@ class Agent(threading.Thread):
                         self.optimize_global_model()
 
                 self.local_steps = self.local_steps + 1
-
 
             self.update_target_network()
 
@@ -199,7 +219,7 @@ def train_multiple_agents():
     # Initialize environments, DQNs, and memory
     envs = [
         RecordVideo(
-            CustomEnv(max_steps=MAX_STEPS, render_mode="rgb_array"),
+            CustomEnv(max_steps=MAX_STEPS, render_mode="rgb_array", rank=i),
             video_folder=f"{video_dir}/agent_{i}",
             episode_trigger=lambda episode: episode % video_interval == 0,
             disable_logger=True
@@ -212,10 +232,10 @@ def train_multiple_agents():
     memory = ReplayMemory(50000)
 
     hyperparams_list = [
-        {"epsilon": 0.7, "epsilon_min": 0.05, "epsilon_decay": (1 - 0.05) / num_episodes, "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64},
-        {"epsilon": 0.7, "epsilon_min": 0.05, "epsilon_decay": (1 - 0.05) / (num_episodes * 1.1), "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64},
-        {"epsilon": 0.7, "epsilon_min": 0.05, "epsilon_decay": (1 - 0.05) / (num_episodes * 0.9), "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64},
-        {"epsilon": 0.7, "epsilon_min": 0, "epsilon_decay": (1 - 0.05) / num_episodes, "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64}
+        {"epsilon": 1.0, "epsilon_min": 0.05, "epsilon_decay": (1 - 0.05) / num_episodes, "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64},
+        {"epsilon": 1.0, "epsilon_min": 0.05, "epsilon_decay": (1 - 0.05) / (num_episodes * 1.1), "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64},
+        {"epsilon": 1.0, "epsilon_min": 0.05, "epsilon_decay": (1 - 0.05) / (num_episodes * 0.9), "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64},
+        {"epsilon": 1.0, "epsilon_min": 0, "epsilon_decay": (1 - 0.05) / num_episodes, "gamma": 0.99, "num_episodes": num_episodes, "batch_size": 64}
     ]
 
     # Initialize agents with hyperparameters
@@ -224,12 +244,14 @@ def train_multiple_agents():
         for i in range(num_agents)
     ]
 
-    for i, agent in enumerate(agents):
-        model_path = f"./best_models/model_episode_{last_final_episode}_agent_{i}.pth"
-        agent.global_dqn.load_state_dict(torch.load(model_path))
-        agent.target_dqn.load_state_dict(agent.global_dqn.state_dict())  # Sync target model
-        print(f"Agent {i} loaded model from {model_path}")
-
+    if last_final_episode != -1:
+        for i, agent in enumerate(agents):
+            model_path = f"./best_models/model_episode_{last_final_episode}_agent_{i}.pth"
+            agent.global_dqn.load_state_dict(torch.load(model_path))
+            agent.target_dqn.load_state_dict(agent.global_dqn.state_dict())  # Sync target model
+            print(f"Agent {i} loaded model from {model_path}")
+    else:
+        print("Not loading previous states")
 
     start_time = time.time()
     
@@ -244,3 +266,7 @@ def train_multiple_agents():
     end_time = time.time()  # End timing
     total_time = end_time - start_time  # Calculate elapsed time
     print(f"Training completed in {total_time:.2f} seconds")
+
+    # Plot rewards after training
+    all_rewards = [agent.rewards for agent in agents]
+    plot_rewards(all_rewards, video_interval, num_agents)
