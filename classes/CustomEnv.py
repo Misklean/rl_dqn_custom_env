@@ -122,9 +122,9 @@ class CustomEnv(gymnasium.Env):
 
         self.last_explored_cell = explored_cells
 
-        # # Penalize the agent only if it’s stuck (hits a wall and can't move)
-        # if stuck_against_wall and np.array_equal(original_pos, self.agent.agent_pos):
-        #     reward -= 1  # Penalty for getting stuck
+        # Penalize the agent only if it’s stuck (hits a wall and can't move)
+        if stuck_against_wall and np.array_equal(original_pos, self.agent.agent_pos):
+            reward -= 1  # Penalty for getting stuck
 
         return reward, terminated, truncated
 

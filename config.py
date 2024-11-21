@@ -13,19 +13,18 @@ MAX_STEPS = 500
 NB_GREEN_CELLS = 10
 
 # Training configuration
-num_episodes = 5000  # Adjust based on your training needs
-num_initial_frames = 8
-video_interval = 200  # Save video every 5 episodes
+num_episodes = 1000  # Adjust based on your training needs
+num_initial_frames = 4
+video_interval = 20  # Save video every 5 episodes
 video_dir = './media/videos'  # Directory to save videos
 sync_interval = 10
-num_agents = 4
+num_agents = 1
 last_final_episode = -1
 
 # Hyperparameters
 BATCH_SIZE = 64
 GAMMA = 0.99
 EPS_START = 1.0
-EPS_END = 0.1
-EPS_DECAY = (EPS_START - EPS_END) / num_episodes
+EPS_END = 0.05
 TAU = 0.005
 LR = 2.5e-4
