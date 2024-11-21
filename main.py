@@ -8,7 +8,7 @@ from config import *
 
 # Main function
 if __name__ == "__main__":
-    env = CustomEnv()
+    env = CustomEnv(render_mode="human")  # Set render mode to human for display
     obs = env.reset()
     running = True
     terminated = False
@@ -18,16 +18,14 @@ if __name__ == "__main__":
             if event.type == pygame.QUIT:
                 running = False
 
-        # Move the agent based on key presses
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_UP]:
-            state, reward, terminated, truncated, info = env.step(0)  # up
-        if keys[pygame.K_DOWN]:
-            state, reward, terminated, truncated, info = env.step(1)  # down
-        if keys[pygame.K_LEFT]:
-            state, reward, terminated, truncated, info = env.step(2)  # left
-        if keys[pygame.K_RIGHT]:
-            state, reward, terminated, truncated, info = env.step(3)  # right
+        # Determine action based on key presses
+        if pygame.key.get_pressed()[pygame.K_UP]:
+            action = 1  # Action 1 when UP arrow is pressed
+        else:
+            action = 0  # Action 0 when no key is pressed
+
+        # Perform the action in the environment
+        state, reward, terminated, truncated, info = env.step(action)
 
         running = not terminated
 
