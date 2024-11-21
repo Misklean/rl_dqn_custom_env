@@ -53,6 +53,30 @@ class CustomEnv(gymnasium.Env):
         # Prevent the cube from going off-screen horizontally
         self.player_x = max(0, min(self.player_x, self.screen_width - self.player_size))
 
+        # Move obstacles
+        for obstacle in self.obstacles:
+            obstacle["x"] -= self.obstacle_speed
+
+        # Remove obstacles that are off-screen
+        self.obstacles = [o for o in self.obstacles if o["x"] + o["width"] > 0]
+
+        # Increment spawn timer
+        self.spawn_timer += 1
+
+        # Spawn new obstacles if the delay is met
+        if self.spawn_timer >= self.min_spawn_delay and random.random() < self.obstacle_spawn_chance:
+            self.spawn_obstacle()
+            self.spawn_timer = 0  # Reset timer after spawning an obstacle
+
+        # Check for collisions
+        player_rect = pygame.Rect(self.player_x, self.player_y, self.player_size, self.player_size)
+        for obstacle in self.obstacles:
+            obstacle_rect = pygame.Rect(obstacle["x"], obstacle["y"], obstacle["width"], obstacle["height"])
+            if player_rect.colliderect(obstacle_rect):
+                terminated = True  # End the game on collision
+                reward = -10  # Penalty for hitting an obstacle
+                return self.get_observation(), reward, terminated, False, {}
+
         # Set the terminated and truncated flags
         terminated = False
         truncated = False
@@ -66,17 +90,20 @@ class CustomEnv(gymnasium.Env):
 
         self.player_x = PLAYER_X
         self.player_y = PLAYER_y
-
         self.player_size = SIZE
         self.player_speed = SPEED
         self.velocity_y = 0
-
         self.player_color = COLOR
-
         self.gravity = GRAVITY
-
         self.is_jump = False
         self.jump_count = 10
+
+        # Obstacle settings
+        self.obstacles = []  # List to hold obstacles
+        self.obstacle_speed = 5  # Speed at which obstacles move
+        self.obstacle_spawn_chance = 0.2  # Probability for additional randomness
+        self.min_spawn_delay = 50  # Minimum delay in frames before spawning next obstacle
+        self.spawn_timer = 0  # Tracks steps since last obstacle spawned
 
         self.platform_height = PLATFORM_HEIGHT
         
@@ -92,6 +119,10 @@ class CustomEnv(gymnasium.Env):
 
         # Draw the green platform at the bottom
         pygame.draw.rect(self.screen, (255, 255, 255), (0, self.screen_height - self.platform_height, self.screen_width, self.platform_height))
+
+        # Draw obstacles
+        for obstacle in self.obstacles:
+            pygame.draw.rect(self.screen, (0, 255, 0), (obstacle["x"], obstacle["y"], obstacle["width"], obstacle["height"]))
 
         # Draw the red cube
         pygame.draw.rect(self.screen, self.player_color, (self.player_x, self.player_y, self.player_size, self.player_size))
@@ -119,3 +150,15 @@ class CustomEnv(gymnasium.Env):
     def seed(self, seed=None):
         random.seed(seed)
         np.random.seed(seed)
+
+    def spawn_obstacle(self):
+        obstacle_width = random.randint(20, 50)
+        obstacle_height = random.randint(20, 50)
+        obstacle_x = self.screen_width
+        obstacle_y = self.screen_height - self.platform_height - obstacle_height
+        self.obstacles.append({
+            "x": obstacle_x,
+            "y": obstacle_y,
+            "width": obstacle_width,
+            "height": obstacle_height
+        })
