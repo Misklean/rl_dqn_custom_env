@@ -20,6 +20,7 @@ class CustomEnv(gymnasium.Env):
         pygame.init()
         pygame.display.set_caption("Custom Env")
         self.render_mode = render_mode
+        self.max_steps = max_steps
 
         self.screen_width = SCREEN_WIDTH
         self.screen_height = SCREEN_HEIGHT
@@ -67,21 +68,11 @@ class CustomEnv(gymnasium.Env):
         if self.spawn_timer >= self.min_spawn_delay and random.random() < self.obstacle_spawn_chance:
             self.spawn_obstacle()
             self.spawn_timer = 0  # Reset timer after spawning an obstacle
+            
+        terminated, truncated, reward = self.compute_rewards()
 
-        # Check for collisions
-        player_rect = pygame.Rect(self.player_x, self.player_y, self.player_size, self.player_size)
-        for obstacle in self.obstacles:
-            obstacle_rect = pygame.Rect(obstacle["x"], obstacle["y"], obstacle["width"], obstacle["height"])
-            if player_rect.colliderect(obstacle_rect):
-                terminated = True  # End the game on collision
-                reward = -10  # Penalty for hitting an obstacle
-                return self.get_observation(), reward, terminated, False, {}
-
-        # Set the terminated and truncated flags
-        terminated = False
-        truncated = False
-        reward = 0  # Placeholder for reward, modify as needed
-        info = {}  # Placeholder for additional info, modify as needed
+        info = {}
+        self.current_step += 1
 
         return self.get_observation(), reward, terminated, truncated, info
 
@@ -97,6 +88,7 @@ class CustomEnv(gymnasium.Env):
         self.gravity = GRAVITY
         self.is_jump = False
         self.jump_count = 10
+        self.current_step = 0
 
         # Obstacle settings
         self.obstacles = []  # List to hold obstacles
@@ -162,3 +154,21 @@ class CustomEnv(gymnasium.Env):
             "width": obstacle_width,
             "height": obstacle_height
         })
+
+    def compute_rewards(self):
+        # Default reward for surviving a step
+        reward = 1
+
+        # Check for collision with obstacles
+        player_rect = pygame.Rect(self.player_x, self.player_y, self.player_size, self.player_size)
+        for obstacle in self.obstacles:
+            obstacle_rect = pygame.Rect(obstacle["x"], obstacle["y"], obstacle["width"], obstacle["height"])
+            if player_rect.colliderect(obstacle_rect):
+                return True, False, -10  # terminated, truncated, negative reward for collision
+
+        # Check if maximum steps are reached
+        if self.current_step >= self.max_steps:
+            return False, True, reward  # terminated, truncated, reward for surviving till max steps
+
+        # If no collision and max steps not reached
+        return False, False, reward
