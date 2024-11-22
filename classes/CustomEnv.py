@@ -21,6 +21,7 @@ class CustomEnv(gymnasium.Env):
         pygame.display.set_caption("Custom Env")
         self.render_mode = render_mode
         self.max_steps = max_steps
+        self.action_space = spaces.Discrete(2)
 
         self.screen_width = SCREEN_WIDTH
         self.screen_height = SCREEN_HEIGHT

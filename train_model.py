@@ -31,13 +31,13 @@ device = torch.device(
 )
 
 # Hyperparameters
-BATCH_SIZE = 256
+BATCH_SIZE = 32
 GAMMA = 0.99
 EPS_START = 1.0
-EPS_END = 0.05
-EPS_DECAY = 1e-4
+EPS_END = 0.01
+EPS_DECAY = 100000
 TAU = 0.005
-LR = 5e-5
+LR = 1e-4
 
 def preprocess_frame(frame):
     if len(frame.shape) == 3 and frame.shape[2] == 3:  # RGB image
@@ -73,9 +73,9 @@ def plot_rewards():
         display.clear_output(wait=True)
 
 # Training configuration
-num_episodes = 1000  # Adjust based on your training needs
+num_episodes = 10000  # Adjust based on your training needs
 num_initial_frames = 4
-video_interval = 50  # Save video every 5 episodes
+video_interval = 200  # Save video every 5 episodes
 video_dir = './videos'  # Directory to save videos
 
 # Instantiate DQN agent
@@ -143,12 +143,12 @@ for i_episode in range(num_episodes + 1):
         if done:
             episode_rewards.append(episode_reward)
             plot_rewards()
-            print(f"Episode {i_episode}: Reward {episode_reward} Epsilon {agent.epsilon}")
+            print(f"Episode {i_episode}: Reward {episode_reward}")
     
-            # Update epsilon with exponential decay
-            agent.epsilon = agent.epsilon_min + (
-                agent.epsilon - agent.epsilon_min
-            ) * np.exp(-agent.epsilon_decay * i_episode)
+            # # Update epsilon with exponential decay
+            # agent.epsilon = agent.epsilon_min + (
+            #     agent.epsilon - agent.epsilon_min
+            # ) * np.exp(-agent.epsilon_decay * i_episode)
 
             break
 

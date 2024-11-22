@@ -57,9 +57,15 @@ class DQNAgent:
         self.tau = tau
         self.action_size = action_size
         self.losses = []
+        self._get_eps = lambda n_steps: self.epsilon_min + (self.epsilon - self.epsilon_min) * np.exp(
+            -1.0 * n_steps / self.epsilon_decay
+        )
+
 
     def select_action(self, state, steps_done):
-        if np.random.rand() > self.epsilon:
+        eps = self._get_eps(steps_done)
+
+        if np.random.rand() > eps:
             with torch.no_grad():
                 return self.q_network(state).max(1)[1].view(1, 1)
         else:
