@@ -69,7 +69,8 @@ class CustomEnv(gymnasium.Env):
         if self.spawn_timer >= self.min_spawn_delay and random.random() < self.obstacle_spawn_chance:
             self.spawn_obstacle()
             self.spawn_timer = 0  # Reset timer after spawning an obstacle
-            
+
+        # Compute rewards
         terminated, truncated, reward = self.compute_rewards()
 
         info = {}
@@ -157,19 +158,28 @@ class CustomEnv(gymnasium.Env):
         })
 
     def compute_rewards(self):
-        # Default reward for surviving a step
-        reward = 1
+        reward = 0
+        passed_obstacles = 0
 
         # Check for collision with obstacles
         player_rect = pygame.Rect(self.player_x, self.player_y, self.player_size, self.player_size)
         for obstacle in self.obstacles:
             obstacle_rect = pygame.Rect(obstacle["x"], obstacle["y"], obstacle["width"], obstacle["height"])
             if player_rect.colliderect(obstacle_rect):
-                return True, False, -10  # terminated, truncated, negative reward for collision
+                return True, False, -5  # terminated, truncated, negative reward for collision
 
         # Check if maximum steps are reached
         if self.current_step >= self.max_steps:
             return False, True, reward  # terminated, truncated, reward for surviving till max steps
 
-        # If no collision and max steps not reached
+        # Check if the player has passed any obstacles
+        for obstacle in self.obstacles:
+            # If the player has passed the obstacle (the player's x position is greater than the obstacle's x position)
+            if self.player_x > obstacle["x"] + obstacle["width"]:
+                passed_obstacles += 1
+
+        # Give the player a reward for each obstacle they have passed
+        reward += passed_obstacles
+
+        # Return the result
         return False, False, reward
