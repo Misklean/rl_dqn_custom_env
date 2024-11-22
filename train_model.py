@@ -30,15 +30,6 @@ device = torch.device(
     "cpu"
 )
 
-# Hyperparameters
-BATCH_SIZE = 32
-GAMMA = 0.99
-EPS_START = 1.0
-EPS_END = 0.01
-EPS_DECAY = 100000
-TAU = 0.005
-LR = 1e-4
-
 def preprocess_frame(frame):
     if len(frame.shape) == 3 and frame.shape[2] == 3:  # RGB image
         gray_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)

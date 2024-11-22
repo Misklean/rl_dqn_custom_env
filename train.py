@@ -190,9 +190,19 @@ def train_dqn(env, agent, num_episodes=500):
 
                 break
 
+# Hyperparameters
+BATCH_SIZE = 32
+GAMMA = 0.99
+EPS_START = 1.0
+EPS_END = 0.01
+EPS_DECAY = 10000
+TAU = 0.005
+LR = 1e-4
+
 if __name__ == "__main__":
     env = CustomEnv(render_mode="human")
-    agent = DQNAgent(action_size=env.action_space.n)
+    agent = DQNAgent(action_size=env.action_space.n, learning_rate=LR, gamma=GAMMA, epsilon=EPS_START, epsilon_min=EPS_END,
+                 epsilon_decay=EPS_DECAY, tau=TAU)
 
     # Step 1: Play and train directly on the data
     play_and_train(env, agent, n_episodes=n_record_episodes, max_steps=max_steps)
