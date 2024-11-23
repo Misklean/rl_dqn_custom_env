@@ -63,9 +63,7 @@ class DQNAgent:
 
 
     def select_action(self, state, steps_done):
-        eps = self._get_eps(steps_done)
-
-        if np.random.rand() > eps:
+        if np.random.rand() > self.epsilon:
             with torch.no_grad():
                 return self.q_network(state).max(1)[1].view(1, 1)
         else:
@@ -109,8 +107,6 @@ class DQNAgent:
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
-        # for param in self.q_network.parameters():
-        #     param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
 

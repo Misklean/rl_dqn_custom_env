@@ -82,7 +82,7 @@ class CustomEnv(gymnasium.Env):
         super().reset(seed=seed)
 
         self.player_x = PLAYER_X
-        self.player_y = PLAYER_y
+        self.player_y = PLAYER_Y
         self.player_size = SIZE
         self.player_speed = SPEED
         self.velocity_y = 0

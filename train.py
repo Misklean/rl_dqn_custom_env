@@ -9,6 +9,10 @@ import cv2
 from itertools import count
 from gymnasium.wrappers import RecordVideo
 import matplotlib.pyplot as plt
+import gymnasium as gym
+import ale_py
+from gymnasium.utils.play import play
+
 # Set device
 device = torch.device(
     "cuda" if torch.cuda.is_available() else
@@ -16,18 +20,7 @@ device = torch.device(
     "cpu"
 )
 
-# Parameters
-n_record_episodes = 10  # Number of episodes to play manually
-max_steps = 500        # Max steps per episode
-batch_size = 64         # Batch size for training
-
-# Parameters
-num_initial_frames = 4  # Number of frames to stack initially
-
-video_folder = "./videos"
-video_interval = 50
-
-def plot_rewards(rewards, video_interval, save_path='agent_rewards_plot.png'):
+def plot_rewards(rewards, video_interval, save_path='results/agent_rewards_plot.png'):
     plt.figure(figsize=(10, 6))
 
     moving_avg = [
@@ -74,7 +67,7 @@ def play_and_train(env, agent, n_episodes, max_steps):
         # Fill the buffer with the initial frames
         for _ in range(num_initial_frames):
             frame_buffer.append(preprocess_frame(state))
-            state, reward, terminated, truncated, info = env.step(env.action_space.sample())
+            state, reward, terminated, truncated, info = env.step(0)
             state = preprocess_frame(state)
             step += 1
 
@@ -121,6 +114,8 @@ def play_and_train(env, agent, n_episodes, max_steps):
         # Update the target network periodically
         agent.update_target_network()
         print(f"Episode {episode + 1}: Model updated")
+
+    pygame.quit()
 
 def train_dqn(env, agent, num_episodes=500):
     # Initialize steps_done
@@ -181,28 +176,25 @@ def train_dqn(env, agent, num_episodes=500):
             if done:
                 episode_rewards.append(episode_reward)
                 plot_rewards(episode_rewards, video_interval)
-                print(f"Episode {i_episode}: Reward {episode_reward}")
+                print(f"Episode {i_episode}: Reward {episode_reward} Epsilon {agent.epsilon}")
+
+                if i_episode % video_interval == 0:
+                    agent.save_model(filepath=f'./results/models/dqn_model_episode_{i_episode}.pth')
         
-                # # Update epsilon with exponential decay
-                # agent.epsilon = agent.epsilon_min + (
-                #     agent.epsilon - agent.epsilon_min
-                # ) * np.exp(-agent.epsilon_decay * i_episode)
+                # Update epsilon with exponential decay
+                agent.epsilon = agent.epsilon_min + (
+                    agent.epsilon - agent.epsilon_min
+                ) * np.exp(-agent.epsilon_decay * i_episode)
+                # Set epsilon to 0 if it drops below 0.01
+                if agent.epsilon <= 0.01:
+                    agent.epsilon = 0
 
                 break
 
-# Hyperparameters
-BATCH_SIZE = 32
-GAMMA = 0.99
-EPS_START = 1.0
-EPS_END = 0.01
-EPS_DECAY = 10000
-TAU = 0.005
-LR = 1e-4
-
-if __name__ == "__main__":
+if __name__ == "__main__":    
     env = CustomEnv(render_mode="human")
     agent = DQNAgent(action_size=env.action_space.n, learning_rate=LR, gamma=GAMMA, epsilon=EPS_START, epsilon_min=EPS_END,
-                 epsilon_decay=EPS_DECAY, tau=TAU)
+                  epsilon_decay=EPS_DECAY, tau=TAU)
 
     # Step 1: Play and train directly on the data
     play_and_train(env, agent, n_episodes=n_record_episodes, max_steps=max_steps)
@@ -210,4 +202,4 @@ if __name__ == "__main__":
     env = CustomEnv(render_mode="rgb_array")
     env = RecordVideo(env, video_folder=video_folder, episode_trigger=lambda episode: episode % video_interval == 0, disable_logger=True)
 
-    train_dqn(env, agent, num_episodes=1000)
+    train_dqn(env, agent, num_episodes=NB_EPISODES)
