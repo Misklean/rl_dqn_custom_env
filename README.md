@@ -65,7 +65,7 @@ Behavior Imitation allows the agent to mimic human gameplay:
 ## **Results**
 ### **Videos**
 Here are training highlights from different episodes:
-- **Episode 50**: [Insert link or path]  
+- **Episode 50**: [[Insert link or path](https://github.com/user-attachments/assets/1e3b30e3-75f9-4634-a3c5-aff00a67c9ec)]  
 - **Episode 200**: [Insert link or path]  
 - **Episode 500**: [Insert link or path]  
 - **Episode 700**: [Insert link or path]  
