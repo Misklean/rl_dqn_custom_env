@@ -6,9 +6,6 @@ from gymnasium import spaces
 import cv2
 from pygame.surfarray import array3d
 
-from classes.MapManager import *
-from classes.Agent import *
-
 from config import *
 
 class CustomEnv(gymnasium.Env):
