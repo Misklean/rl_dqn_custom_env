@@ -65,16 +65,20 @@ Behavior Imitation allows the agent to mimic human gameplay:
 ## **Results**
 ### **Videos**
 Here are training highlights from different episodes:
-- Episode 50:  
+- **Episode 50**:  
 ![ep_50](https://github.com/user-attachments/assets/93910b1f-d6f0-42c7-9be9-895efacf15a4)
-- **Episode 200**: [Insert link or path]  
-- **Episode 500**: [Insert link or path]  
-- **Episode 700**: [Insert link or path]  
-- **Episode 1000**: [Insert link or path]  
+- **Episode 200**:
+![ep_200](https://github.com/user-attachments/assets/d6e3042d-2afb-4f98-90e8-340a7835a6ca)
+- **Episode 500**:
+![ep_500](https://github.com/user-attachments/assets/dfa9a5fd-e627-49e5-b7de-9614e203ef16)
+- **Episode 700**:
+![ep_700](https://github.com/user-attachments/assets/7448c61f-57d0-4873-bb16-a17f37c58238)
+- **Episode 1000**:
+![ep_1000](https://github.com/user-attachments/assets/6426c094-8e6e-4fca-a288-1dd37d40d708)
 
 ### **Rewards**
 Below is the rewards plot showing the agent's progress during training:
-- [Insert rewards plot image or path]
+![agent_rewards_plot](https://github.com/user-attachments/assets/78e69f47-a5a2-4fbf-beb8-1bfe3f729c4b)
 
 ---
 
